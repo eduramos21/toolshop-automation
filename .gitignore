@@ -1,0 +1,29 @@
+# Build output
+build/
+.gradle/
+
+# Playwright writes traces and videos relative to user.dir unless outputDir is
+# set. It is set (P5), but this catches the default if it ever regresses.
+**/test-results/
+**/playwright-report/
+
+# Reports
+allure-results/
+allure-report/
+.allure/
+
+# Local secrets. Never committed. See docs/CONFIGURATION.md
+.env.local
+.env
+
+# Personal standing brief for Claude Code. Not committed.
+CLAUDE.local.md
+
+# IDE. .run/ IS committed - it holds the shared run configurations.
+.idea/*
+!.idea/.gitignore
+*.iml
+.vscode/
+
+# OS
+.DS_Store

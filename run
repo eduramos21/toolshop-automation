@@ -1,0 +1,67 @@
+#!/bin/sh
+# The single entry point. CI calls these exact subcommands, so there is no
+# orchestration that exists only in a workflow YAML.
+#
+#   ./run up            bring the SUT up, wait for it, seed it, wait again
+#   ./run down          stop the SUT
+#   ./run test          run the whole suite
+#   ./run status        where things are and whether they answer
+#
+# `report` arrives in P6 with Allure. Not scaffolded ahead of it.
+set -eu
+
+SUT_DIR="${TOOLSHOP_SUT_DIR:-../practice-software-testing}"
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+sut() {
+    if [ ! -d "$SUT_DIR" ]; then
+        printf 'System under test not found at: %s\n\n' "$SUT_DIR" >&2
+        printf 'Clone it next to this repo:\n' >&2
+        printf '  git clone https://github.com/testsmith-io/practice-software-testing\n\n' >&2
+        printf 'Or point TOOLSHOP_SUT_DIR at an existing clone.\n' >&2
+        exit 1
+    fi
+    ( cd "$SUT_DIR" && docker compose "$@" )
+}
+
+case "${1:-help}" in
+  up)
+    sut up -d
+    # `docker compose up -d` returns when containers start, not when migrations
+    # finish, so wait before seeding and again after.
+    "$HERE/scripts/wait-for-sut.sh"
+    sut exec -T laravel-api php artisan migrate:fresh --seed
+    "$HERE/scripts/wait-for-sut.sh"
+    printf '\nSUT ready.  UI http://localhost:4200  API http://localhost:8091  mail http://localhost:1080\n'
+    ;;
+
+  down)
+    sut down
+    ;;
+
+  test)
+    # Fail with one clear message rather than N test timeouts when the SUT is down.
+    "$HERE/scripts/wait-for-sut.sh" >/dev/null
+    shift
+    "$HERE/gradlew" test "$@"
+    ;;
+
+  status)
+    printf '%-12s %-34s %s\n' SERVICE URL STATE
+    for entry in \
+        "UI|http://localhost:4200" \
+        "API|http://localhost:8091/status" \
+        "mail|http://localhost:1080" \
+        "phpmyadmin|http://localhost:8000/index.php"
+    do
+        name=${entry%%|*}; url=${entry#*|}
+        code=$(curl -sS -o /dev/null -m 5 -w '%{http_code}' "$url" 2>/dev/null || echo '---')
+        printf '%-12s %-34s %s\n' "$name" "$url" "$code"
+    done
+    ;;
+
+  *)
+    printf 'usage: ./run up | down | test | status\n' >&2
+    exit 2
+    ;;
+esac
