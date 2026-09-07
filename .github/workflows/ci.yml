@@ -97,7 +97,7 @@ jobs:
 
       - name: Upload the report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: allure-report
           path: build/allure-report
@@ -107,7 +107,7 @@ jobs:
       # without downloading a whole report.
       - name: Upload failure evidence
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-evidence
           path: ui-tests/build/playwright
