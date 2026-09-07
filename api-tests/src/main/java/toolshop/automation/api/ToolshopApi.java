@@ -1,6 +1,7 @@
 package toolshop.automation.api;
 
 import io.restassured.RestAssured;
+import com.atlassian.oai.validator.restassured.OpenApiValidationFilter;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.config.HttpClientConfig;
 import io.restassured.config.RestAssuredConfig;
@@ -58,8 +59,12 @@ public final class ToolshopApi {
     private final RequestSpecification template;
     private final ConcurrentMap<String, CachedToken> tokens = new ConcurrentHashMap<>();
 
+    /** The application's OpenAPI document, loaded once. */
+    private final ContractSpec contract;
+
     public ToolshopApi(ToolshopConfig config) {
         this.config = config;
+        this.contract = ContractSpec.fetchedFrom(config.apiBaseUrl(), config.apiTimeout());
         int timeoutMillis = Math.toIntExact(config.apiTimeout().toMillis());
         this.template = new RequestSpecBuilder()
                 .setBaseUri(config.apiBaseUrl().toString())
@@ -71,11 +76,42 @@ public final class ToolshopApi {
                 .setConfig(RestAssuredConfig.config().httpClient(HttpClientConfig.httpClientConfig()
                         .setParam("http.connection.timeout", timeoutMillis)
                         .setParam("http.socket.timeout", timeoutMillis)))
+                // Contract validation on the shared specification, so it is not
+                // opt-in. A test cannot forget it and a new test gets it for
+                // free - which is the difference between a contract that is
+                // checked and a contract that has a test somewhere.
+                .addFilter(new OpenApiValidationFilter(contract.validator()))
                 .build();
     }
 
     public ToolshopConfig config() {
         return config;
+    }
+
+    /** The loaded contract, for the tests that assert on the contract itself. */
+    public ContractSpec contract() {
+        return contract;
+    }
+
+    /**
+     * A request validated against the document with <em>no</em> whitelist.
+     *
+     * <p>Used only by the contract suite, to assert that each whitelisted
+     * deviation is still a deviation. Everything else goes through
+     * {@link #anonymous()}, which whitelists the known ones and fails on
+     * anything new.
+     */
+    public RequestSpecification strictlyValidated() {
+        int timeoutMillis = Math.toIntExact(config.apiTimeout().toMillis());
+        return RestAssured.given().spec(new RequestSpecBuilder()
+                .setBaseUri(config.apiBaseUrl().toString())
+                .setContentType(ContentType.JSON)
+                .setAccept(ContentType.JSON)
+                .setConfig(RestAssuredConfig.config().httpClient(HttpClientConfig.httpClientConfig()
+                        .setParam("http.connection.timeout", timeoutMillis)
+                        .setParam("http.socket.timeout", timeoutMillis)))
+                .addFilter(new OpenApiValidationFilter(contract.strictValidator()))
+                .build());
     }
 
     /** A request with no credentials. */

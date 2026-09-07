@@ -46,7 +46,7 @@ class TagVocabularyTest {
      * the reminder.
      */
     private static final List<Class<? extends Annotation>> ANNOTATIONS = List.of(
-            Ui.class, Api.class, Db.class, Contract.class,
+            Ui.class, Api.class, Db.class, Contract.class, A11y.class,
             Smoke.class, Regression.class,
             Storefront.class, Checkout.class, Admin.class, Auth.class,
             Slow.class, Quarantine.class);

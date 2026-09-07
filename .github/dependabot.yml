@@ -1,0 +1,35 @@
+# Three ecosystems, because this repository pins versions in three places and a
+# pin nobody updates is just an old version with extra steps.
+version: 2
+updates:
+  # gradle/libs.versions.toml. Dependabot understands the version catalog, which
+  # is most of why every version lives there.
+  - package-ecosystem: gradle
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      junit:
+        patterns: ["org.junit*"]
+      allure:
+        patterns: ["io.qameta.allure*"]
+    ignore:
+      # Playwright's Java version and its bundled browser build are coupled, and
+      # the browser is installed by a Gradle task from this same artifact. A
+      # minor bump is fine; a major one needs the browser install re-checked, so
+      # it should be a deliberate change rather than an automatic one.
+      - dependency-name: "com.microsoft.playwright:playwright"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+
+  # The application under test is pinned by digest, so this is what turns "we
+  # test against a fixed version" into "we notice when a newer one exists".
+  - package-ecosystem: docker
+    directory: "/docker"
+    schedule:
+      interval: weekly

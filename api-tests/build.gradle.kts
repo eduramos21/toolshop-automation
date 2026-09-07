@@ -14,6 +14,8 @@ dependencies {
     // catalog entry for why records rather than maps.
     api(libs.jackson.databind)
 
+    api(libs.swagger.request.validator)
+
     api(platform(libs.allure.bom))
     api(libs.allure.jupiter)
 }

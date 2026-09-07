@@ -1,0 +1,105 @@
+# The application under test, pinned, in this repository.
+#
+# This exists so that a developer and CI bring up the same thing. Cloning the
+# application and running its own compose files means the version under test is
+# whatever that clone happens to be on, which makes "it passes locally" an
+# unfalsifiable claim.
+#
+# Three differences from the application's own compose files, each deliberate:
+#
+#   1. Every image is pinned by DIGEST, not by tag. `sprint5-api:2.4` is a
+#      mutable tag and `web` publishes only `latest`, so a tag alone does not
+#      describe a version. A digest does.
+#   2. MariaDB has a healthcheck and the services that need it wait for it.
+#      The application's compose files have none, so the API can start against a
+#      database that is not accepting connections yet and crash-loop.
+#   3. MailCatcher is here. It lives only in the application's
+#      docker-compose.override.yml, so a CI run built from its production
+#      compose would have no mailbox and the mail assertions would fail for a
+#      reason unrelated to the product.
+#
+# Readiness is still `scripts/wait-for-sut.sh`. A healthcheck says a container is
+# up; only polling /status says migrations have finished, and `docker compose up`
+# returns well before they have.
+
+name: toolshop-sut
+
+services:
+  laravel-api:
+    image: testsmith/practice-software-testing-sprint5-api@sha256:72f077ed05e203e9a97c4864d1db52030b7d39dbd1c6fe21240754c00bba0fe3
+    environment:
+      PHP_OPCACHE_VALIDATE_TIMESTAMPS: "1"
+      DB_HOST: mariadb
+      DB_PORT: "3306"
+      # The application only sends registration and checkout mail when it
+      # believes it is running locally.
+      APP_ENV: local
+      MAIL_MAILER: smtp
+      MAIL_HOST: mailcatcher
+      MAIL_PORT: "1025"
+    volumes:
+      - laravel-app-code:/var/www
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+  angular-ui:
+    image: testsmith/practice-software-testing-sprint5-ui@sha256:7b6eb43fd2bd9fd0e5f6fb64e46155162bcf0f9db95b7f660343ca844ee79f36
+    ports:
+      - "4200:4200"
+    command: bash -c "ng serve --host 0.0.0.0 --port 4200"
+
+  # The reverse proxy. 8091 is the API, 8000 is the database admin UI.
+  web:
+    image: testsmith/practice-software-testing-web@sha256:950bafdc86501002c381e35d9b70e298fe211f4ab1fbfda334b67f03dffa048d
+    ports:
+      - "8091:80"
+      - "8000:81"
+    depends_on:
+      - laravel-api
+
+  # Runs the application's scheduled work. Shares the API's code volume, so it
+  # has to start after the API has populated it.
+  cron:
+    image: testsmith/practice-software-testing-cron@sha256:2e0d51bd3f92c1eb2d2b21439982c8c8785bcbfa0c0fb27698f83e785337110f
+    restart: always
+    working_dir: /var/www
+    command: sh -c "crond -f -l 8"
+    environment:
+      PHP_OPCACHE_VALIDATE_TIMESTAMPS: "1"
+      DB_HOST: mariadb
+      DB_PORT: "3306"
+    volumes:
+      - laravel-app-code:/var/www
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      laravel-api:
+        condition: service_started
+
+  mariadb:
+    image: yobasystems/alpine-mariadb:10.6.11
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_USER: user
+      MYSQL_PASSWORD: root
+      MYSQL_DATABASE: toolshop
+    healthcheck:
+      # The one healthcheck that earns its place: the API cannot start against a
+      # database that is not accepting connections.
+      test: ["CMD", "mariadb-admin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  mailcatcher:
+    image: dockage/mailcatcher:0.9.0
+    ports:
+      - "1025:1025"
+      - "1080:1080"
+
+volumes:
+  laravel-app-code:

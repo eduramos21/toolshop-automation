@@ -19,12 +19,16 @@ package toolshop.automation.core.tags;
  */
 public final class Tags {
 
-    // Layer: which surface the test drives. One per module, so a layer tag also
-    // selects a module - `-Ptags=api` legitimately runs nothing in ui-tests.
+    // Layer: which surface the test drives. Mostly one per module, so a layer
+    // tag also selects a module - `-Ptags=api` legitimately runs nothing in
+    // ui-tests. A11y is the exception: it drives the same browser as @Ui but
+    // asks a different question of it, and it is kept separate so that an
+    // accessibility violation does not block a functional run.
     public static final String UI = "ui";
     public static final String API = "api";
     public static final String DB = "db";
     public static final String CONTRACT = "contract";
+    public static final String A11Y = "a11y";
 
     // Depth: how much of the suite a run is willing to pay for.
     public static final String SMOKE = "smoke";

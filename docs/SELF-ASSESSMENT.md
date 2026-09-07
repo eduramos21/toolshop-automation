@@ -307,6 +307,106 @@ the invoice row and the customer's inbox is what makes it visible.
 quarantined, because the application is third-party here and asserting the broken
 behaviour would turn a defect into a requirement.
 
+### P8 — CI parity and a pinned application
+
+The change that mattered was not the workflow file. It was that
+`docker/docker-compose.sut.yml` lives here and `./run up` uses it, so **no clone
+of the application is needed at all**. Before this, the version under test was
+whatever a developer's clone happened to be on, which makes "it passes locally"
+an unfalsifiable claim.
+
+Every image is pinned by digest rather than tag, and that distinction is not
+pedantry: `sprint5-api:2.4` is mutable, and `web` and `cron` publish only
+`latest`. A tag does not describe a version.
+
+Two things the application's own compose files lack, added here because their
+absence causes failures that look like product bugs: a MariaDB healthcheck with
+the API waiting on it, and MailCatcher — which lives only in the application's
+`docker-compose.override.yml`, so a run built from its production compose has no
+mailbox and every mail assertion fails for an unrelated reason.
+
+The workflow contains no logic. Every step is `./run <something>` or a script in
+`scripts/`, including the job summary, because anything that exists only in a
+workflow cannot be run or debugged locally and the first time it matters is when
+it breaks.
+
+**What I could verify and what I could not.** The pinned images run the whole
+suite green — 136 tests at the time — and the workflow's steps were rehearsed
+locally with `.env.local` moved away, so the credentials came only from the
+environment, at `TOOLSHOP_PROFILE=ci`. What I could not verify is the workflow
+running on GitHub: Actions cannot be executed here, so the action versions and
+expression syntax are unchecked. The first push is what verifies the wiring, and
+saying so is more useful than implying otherwise.
+
+Two plan items were dropped after measurement rather than for convenience.
+`/dev/shm` needs no adjustment because tests run on the runner rather than in a
+container. And Allure is an uploaded artefact rather than a GitHub Pages site:
+Pages was in the plan partly so the trace viewer would have a reachable URL, and
+P6 established that Allure loads the trace from the report's own files. What was
+left did not justify a step that silently does nothing until Pages is enabled.
+
+### P9 — OpenAPI contract validation
+
+This was the step that found the most, and almost none of it was where I
+expected.
+
+**The document is OpenAPI 3.2, and no Java validator supports 3.2.**
+swagger-parser does not recognise the version, silently falls back to Swagger 2
+parsing, and then rejects `content` and `requestBody` as "unexpected" on every
+operation in the file — an error message that says nothing about the actual
+problem. Setting the version to 3.1.0 left exactly one complaint: seven paths
+declare a `query` operation, which is an HTTP method OpenAPI 3.2 added. The
+application really does use it; the storefront sends `QUERY /products`. So the
+document is a genuine 3.2 document, not a mislabelled one, and the normalising
+is two removals of things this suite does not exercise.
+
+**Turning the validator on failed 28 of 41 API tests.** Thirteen distinct
+disagreements, and every one is the document under-reporting what the
+application answers — not once the other way round, which would have been more
+alarming. `POST /invoices` returns 201 where only 200 is documented. Every
+`/reports/*` route and `GET /users` return an undocumented 403 while documenting
+401, and those are answers to different questions: "I do not know who you are"
+against "I know exactly who you are and no". A client written from this document
+would have no reason to handle the second.
+
+The design question was what to do with thirteen known-wrong things. A blanket
+level change would have made the suite green and the check worthless — and it
+would have hidden the thirteenth, a 423 for a locked account, which was not in
+the first measurement because no account happened to be locked during it and
+which failed the very next run. So the whitelist is declared entry by entry with
+a reason, and `ApiContractTest` replays each interaction against a validator
+with no whitelist and asserts the deviation is still there. Without that second
+half a whitelist is a graveyard.
+
+Leaving the filter global rather than confining it to the contract suite is what
+made the 28 failures free. The fourteenth deviation will be too.
+
+### P10 — Accessibility
+
+The cheapest step by far, and it still produced a finding I would have missed.
+
+**A scan that does not wait for the page under-reports.** The first pass said
+the sign-in page had zero violations. With
+`waitForLoadState(NETWORKIDLE)` it consistently reports a **critical**
+`button-name` — a button a screen reader announces as "button" and nothing else,
+on the page where people sign in. A lazily-rendered control had not been given
+its label yet when the unwaited scan ran.
+
+That is worse than not scanning, because it produces a green tick. It is also
+the one place I have deliberately used `NETWORKIDLE`, which Playwright
+discourages: for waiting on a specific element there is almost always a better
+condition, but "the page has finished loading everything" is precisely the
+precondition for scanning a whole page.
+
+Asserting against a per-page baseline rather than zero was the other decision.
+Zero would be red from the first day and therefore ignored; "no more than
+before" lets a fix go unnoticed and lets a regression hide behind an unrelated
+one. Equality catches both directions, at the cost of a baseline that has to be
+re-measured when a page changes.
+
+Six pages scanned, three violations across two of them, and the two worst are on
+the authentication forms.
+
 ### Postscript: the residue check that was not looking at everything
 
 P7 closed on "running the suite twice leaves no residue", verified against users
@@ -338,6 +438,10 @@ the cart." - which named the second bug in the same run.
 | Allure 3 needs Allure 3 results, or a migration | generated a report from `allure-jupiter:2.35.5` output with `allure@3` (3.16.1) | **False.** It reads allure-java 2.x results directly, behaviour tree included. Spike S4; the Allure 2 CLI fallback was not needed. |
 | Allure renders a Playwright trace inline | attached `application/vnd.allure.playwright-trace` from a deliberately failed test and inspected the generated report | **True.** The zip is copied to `data/attachments/`, marked used, and loaded into the trace viewer. Spike S3. Caveat: the viewer code is served from `trace.playwright.dev`, so viewing needs internet. |
 | Playwright's `fill` is atomic enough for a reactive form that echoes its own changes | read the URL of the rejected lookup from the failure message | **False.** `fill` is select-all-then-insert; a patch landing between them appends, and the postcode reached the API as `1011AB1011AB`. Order the fills so the lookup trigger is last. |
+| A Java OpenAPI validator can read the application's document | loaded it with swagger-request-validator 2.46.1 | **False.** The document is OpenAPI **3.2**; swagger-parser does not know the version, falls back to Swagger 2, and rejects `content` and `requestBody` on every operation. At 3.1.0 the only remaining complaint is the 3.2-only `query` operation, which the application genuinely uses. |
+| Maven Central's `<release>` names a usable version | requested the jar for `swagger-request-validator-restassured:3.0.0` | **False, for the second time.** 404 — no jar published. The catalog pins `2.46.1`. AssertJ's `<release>` was a milestone. Read the version list, not the field. |
+| An accessibility scan reports what is on the page | scanned the sign-in page with and without waiting for load | **Not without waiting.** Unwaited: zero violations. Waited: a consistent **critical** `button-name`. A scan that under-reports is worse than none, because it produces a green tick. |
+| Contract validation can be turned on quietly | enabled it as a filter on the shared client | **No.** 28 of 41 API tests failed, from 13 distinct deviations — all of them the document under-reporting the application. That is the finding, not an obstacle to it. |
 | "Any product in stock" is a safe way to pick test data | ran the suite until it broke, then read the catalogue | **False, twice over.** Taking the *first* in-stock product concentrated every purchase in a run on one product - about fifteen units against a seeded stock of twenty-five - so two runs exhausted it and the application let stock go to **-50** without complaint. And reading only page one meant that once those were gone, the one remaining in-stock product was the Thor Hammer, which `CartService` caps at one per cart by comparing the product **name**. Arbitrary test data has to be arbitrary within a stated constraint, not simply first. Now: pages the catalogue, excludes per-cart limits, picks at random. |
 | Searching a product's own full name finds that product | `/products/search?q=<full name>` against the seeded catalogue | **False.** Zero rows. The search is `MATCH(name) AGAINST(? IN BOOLEAN MODE)`, which requires every word, and `with` is a MySQL stopword. The first two words of the same name return three products. The UI search test now takes its term and its expected ids from the application. |
 | A UI success message is evidence that the action succeeded | followed a checkout to the invoice table and the mailbox | **False, on this application.** One press of "finish" shows a payment success message and creates no order. See `docs/adr/0005` and `CheckoutDefectUiTest`. |

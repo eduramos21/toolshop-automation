@@ -2,25 +2,34 @@
 # The single entry point. CI calls these exact subcommands, so there is no
 # orchestration that exists only in a workflow YAML.
 #
-#   ./run up            bring the SUT up, wait for it, seed it, wait again
+#   ./run up            bring the SUT up, wait for it, reset its data
 #   ./run down          stop the SUT
 #   ./run test          run the whole suite
 #   ./run report        render the Allure report from the last run and open it
+#   ./run logs          tail the application's container logs
 #   ./run status        where things are and whether they answer
 set -eu
 
-SUT_DIR="${TOOLSHOP_SUT_DIR:-../practice-software-testing}"
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+COMPOSE="$HERE/docker/docker-compose.sut.yml"
 
+# The application under test comes from the pinned compose file in THIS
+# repository, so a developer and CI bring up the same digests. Cloning the
+# application and using its own compose files means the version under test is
+# whatever that clone is on, which makes "it passes locally" unfalsifiable.
+#
+# TOOLSHOP_SUT_DIR overrides it with a clone, for the case of working on the
+# application itself. Nothing in CI sets it.
 sut() {
-    if [ ! -d "$SUT_DIR" ]; then
-        printf 'System under test not found at: %s\n\n' "$SUT_DIR" >&2
-        printf 'Clone it next to this repo:\n' >&2
-        printf '  git clone https://github.com/testsmith-io/practice-software-testing\n\n' >&2
-        printf 'Or point TOOLSHOP_SUT_DIR at an existing clone.\n' >&2
-        exit 1
+    if [ -n "${TOOLSHOP_SUT_DIR:-}" ]; then
+        if [ ! -d "$TOOLSHOP_SUT_DIR" ]; then
+            printf 'TOOLSHOP_SUT_DIR is set but is not a directory: %s\n' "$TOOLSHOP_SUT_DIR" >&2
+            exit 1
+        fi
+        ( cd "$TOOLSHOP_SUT_DIR" && docker compose "$@" )
+    else
+        docker compose -f "$COMPOSE" "$@"
     fi
-    ( cd "$SUT_DIR" && docker compose "$@" )
 }
 
 case "${1:-help}" in
@@ -90,6 +99,13 @@ case "${1:-help}" in
     fi
     ;;
 
+  logs)
+    # What the application says when a test cannot explain itself. CI runs this
+    # on failure; it is the same command locally.
+    shift 2>/dev/null || true
+    sut logs --no-color --tail "${TOOLSHOP_LOG_LINES:-200}" "$@"
+    ;;
+
   status)
     printf '%-12s %-34s %s\n' SERVICE URL STATE
     for entry in \
@@ -105,7 +121,7 @@ case "${1:-help}" in
     ;;
 
   *)
-    printf 'usage: ./run up | down | test [gradle args] | report | status\n' >&2
+    printf 'usage: ./run up | down | test [gradle args] | report | logs | status\n' >&2
     exit 2
     ;;
 esac

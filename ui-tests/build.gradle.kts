@@ -17,6 +17,7 @@ dependencies {
     testImplementation(project(":data"))
 
     testImplementation(libs.playwright)
+    testImplementation(libs.axe.playwright)
     testImplementation(platform(libs.allure.bom))
     testImplementation(libs.allure.jupiter)
 }

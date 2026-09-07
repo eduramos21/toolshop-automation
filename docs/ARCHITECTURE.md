@@ -30,7 +30,15 @@ use" is not one.
 | `io.rest-assured:rest-assured` | Request specifications shared across a suite, and a filter mechanism that applies to every call. That second one is load-bearing: contract validation against the OpenAPI spec is applied as a filter in the shared client, so it cannot be opt-in. | `java.net.http.HttpClient`. Adequate for requests; has no equivalent of a filter every call passes through, so a per-call convention would be the only option. |
 | `com.fasterxml.jackson.core:jackson-databind` | REST Assured declares Jackson **optional**, so typed payloads silently have no object mapper — measured: the resolved classpath had none. Payload records need one. | `Map.of("emial", …)` for request bodies. The same silent-typo failure the composed tag annotations exist to remove. A hand-rolled record serialiser is not "a few lines" once nesting, nulls and escaping are handled. |
 | `org.mariadb.jdbc:mariadb-java-client` | Reading the rows a checkout wrote, to confirm the storefront's success message corresponds to an order. `PreparedStatement` only. | Trusting the API's own read endpoints. They are served from a cache, so they can agree with a test and disagree with the database — which is exactly the failure this catches. |
+| `com.atlassian.oai:swagger-request-validator-restassured` | Validates every response against the OpenAPI document, as a filter on the shared client so it cannot be opt-in. Its whitelist API is what lets known drift be declared entry by entry rather than suppressed wholesale. | Hand-written schema assertions per endpoint. Opt-in by construction, and the tests that need them most are the ones nobody adds them to. |
+| `com.deque.html.axe-core:playwright` | Accessibility scanning through the Playwright page a UI test already has, so it checks the rendered page rather than the template. | Nothing — there is no standard-library equivalent, and the alternative is no accessibility coverage. |
 | `io.qameta.allure:allure-bom` + `allure-jupiter` | A behaviour tree — epic, feature, story, severity — from the first test, so the report has a top to its hierarchy on the day it is first generated rather than a flat list of class names. | `allure-junit5` (a relocation stub); Gradle's own HTML report (no behaviour hierarchy, no attachments). |
+
+Version numbers here are worth one warning: Maven Central's `<release>` field is
+not a reliable answer to "what is the latest release". It reported `4.0.0-M1`
+for AssertJ, a milestone, and `3.0.0` for the request validator, which has no
+jar published at all. Both were caught by looking, and the catalog pins `3.27.7`
+and `2.46.1`.
 
 No HTTP or JSON library was added for the mail catcher: `java.net.http.HttpClient`
 is in the JDK and Jackson was already here.

@@ -9,18 +9,18 @@ Java 21 · Gradle 9.7.1 · JUnit 6 · Playwright · REST Assured · Allure
 ## Quick start
 
 ```sh
-git clone https://github.com/testsmith-io/practice-software-testing   # next to this repo
-cp .env.local.example .env.local                                     # then fill in the passwords
-./gradlew :ui-tests:installBrowsers                                  # once, pinned to Playwright
-./run up            # start the SUT, wait for it, reset its data
-./run test          # run the suite
-./run report        # render the Allure report and open it
+cp .env.local.example .env.local        # then fill in the passwords
+./gradlew :ui-tests:installBrowsers     # once, pinned to the Playwright version
+./run up                                # start the application, wait for it, reset its data
+./run test                              # run the suite
+./run report                            # render the Allure report and open it
 ```
 
-`./run status` shows what is up.
+No clone of the application is needed. `docker/docker-compose.sut.yml` pins every
+image by digest, so a laptop and a CI runner bring up the same thing — set
+`TOOLSHOP_SUT_DIR` only if you want to run against a clone you are editing.
 
-The SUT is expected at `../practice-software-testing`. Point `TOOLSHOP_SUT_DIR`
-elsewhere if yours lives somewhere else.
+`./run status` shows what is up.
 
 The passwords are the seeded accounts (published in the SUT's own README) and the
 local database.
@@ -44,9 +44,12 @@ a [JUnit tag expression](https://docs.junit.org/current/user-guide/#running-test
 
 **Quote any compound expression.** `&` and `|` are shell operators.
 
-Twelve tags, applied as annotations rather than strings, so `@Smoek` does not
-compile: `@Ui` `@Api` `@Db` `@Contract` · `@Smoke` `@Regression` ·
+Thirteen tags, applied as annotations rather than strings, so `@Smoek` does not
+compile: `@Ui` `@Api` `@Db` `@Contract` `@A11y` · `@Smoke` `@Regression` ·
 `@Storefront` `@Checkout` `@Admin` `@Auth` · `@Slow` `@Quarantine`.
+
+CI's blocking run is `-Ptags='!quarantine & !a11y'`, with accessibility as its
+own step.
 
 A tag expression that matches nothing **fails the build**. That is deliberate —
 a selection that runs nothing must never report green, and unlike a red build it
@@ -106,6 +109,25 @@ That last pair is not decoration. On this application a single press of "finish"
 shows a payment success message and creates **no order** — a suite that asserted
 on the message would report it as passing. See
 [`docs/adr/0005`](docs/adr/0005-failure-evidence-is-attached-by-one-extension.md).
+
+## What the API contract check found
+
+Every API call is validated against the application's own OpenAPI document — a
+filter on the shared client, so no test can skip it. Turning it on failed 28 of
+41 tests, from thirteen distinct disagreements, every one of them the document
+under-reporting what the application answers: `POST /invoices` returns 201 where
+the document lists only 200, every administrative route returns an undocumented
+403, and a locked account returns an undocumented 423.
+
+Each is declared individually in a whitelist, and a test asserts each is still a
+deviation — so when one is documented properly, the build says the entry can go.
+[`docs/adr/0007`](docs/adr/0007-contract-validation-runs-on-every-call.md).
+
+## Accessibility
+
+WCAG 2.0 A and AA, asserted against a per-page baseline rather than against
+zero, so a new violation and a fixed one both fail.
+[`docs/adr/0008`](docs/adr/0008-accessibility-is-asserted-against-a-baseline.md).
 
 ## Failure evidence
 

@@ -7,7 +7,7 @@ command line. A selection that matches nothing fails the build.
 
 | Group | Tags | |
 |---|---|---|
-| Layer | `@Ui` `@Api` `@Db` `@Contract` | which surface the test drives |
+| Layer | `@Ui` `@Api` `@Db` `@Contract` `@A11y` | which surface the test drives |
 | Depth | `@Smoke` `@Regression` | how much of the suite a run pays for |
 | Domain | `@Storefront` `@Checkout` `@Admin` `@Auth` | which part of the product |
 | Escape hatch | `@Slow` `@Quarantine` | admissions, kept visible |
@@ -111,6 +111,17 @@ application is third-party so it cannot be fixed here. The alternatives were
 worse: asserting the broken behaviour turns a defect into a requirement and goes
 red when it is fixed, and deleting the test loses the finding. Quarantine says
 what should happen and marks it known.
+
+`@Contract` marks the tests that guard the OpenAPI whitelist. Note that contract
+validation itself is not confined to them: it is a filter on the shared client,
+so every API call in every test is validated. These tests assert that each
+*known* deviation is still a deviation, so the whitelist cannot outlive its
+reasons. See [`adr/0007`](adr/0007-contract-validation-runs-on-every-call.md).
+
+`@A11y` is its own suite, asserted against a per-page baseline rather than
+against zero. See [`adr/0008`](adr/0008-accessibility-is-asserted-against-a-baseline.md).
+The blocking run excludes it — `-Ptags='!quarantine & !a11y'` — so its failures
+are attributable, but it still runs on every push.
 
 `@Db` marks the tests that need a reachable database or mailbox — the local and
 CI targets. A completed order cannot be undone through the API, so a checkout
