@@ -6,8 +6,12 @@
 # it and no way for a stray coordinate to drift out of step.
 
 [versions]
-junit      = "6.1.3"
-playwright = "1.62.0"
+allure       = "2.35.5"
+assertj      = "3.27.7"
+jackson      = "2.22.2"
+junit        = "6.1.3"
+playwright   = "1.62.0"
+rest-assured = "6.0.1"
 
 [libraries]
 # BOMs. Always consumed through platform(...).
@@ -31,6 +35,10 @@ playwright = "1.62.0"
 # That pin IS a real hazard on Maven, whose nearest-wins would take 5.14.1.
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 
+# Allure's own BOM, for the same reason: allure-jupiter, allure-java-commons and
+# the eventual allure-attachment artifacts release in lockstep.
+allure-bom = { module = "io.qameta.allure:allure-bom", version.ref = "allure" }
+
 # Versionless: constrained by junit-bom above.
 # Note JUnit 6 unified version numbers - org.junit.platform artifacts are now
 # 6.x, not 1.x.
@@ -39,6 +47,34 @@ junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher
 
 playwright = { module = "com.microsoft.playwright:playwright", version.ref = "playwright" }
 
+# Versionless: constrained by allure-bom above.
+#
+# allure-jupiter, NOT allure-junit5 or allure-junit-platform. allure-junit5 is a
+# relocation stub. allure-junit-platform is the real integration, and
+# allure-jupiter depends on it and adds @ParameterizedTest parameter naming.
+allure-jupiter = { module = "io.qameta.allure:allure-jupiter" }
+
+assertj = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+
+# 3.27.7 and not 4.0.0-M1, which is the version Maven Central currently reports
+# as <release>. A milestone is not a release regardless of what the metadata
+# calls it.
+
+rest-assured = { module = "io.rest-assured:rest-assured", version.ref = "rest-assured" }
+
+# REST Assured declares Jackson as OPTIONAL, so it does not resolve transitively
+# and typed payloads silently have no object mapper. Measured on 6.0.1: the
+# resolved test runtime classpath contains no jackson-databind at all.
+#
+# It is here because the payload records are the point - a Map.of("emial", ...)
+# is the same silent-typo failure the composed tag annotations exist to remove,
+# and a hand-rolled record-to-JSON serialiser is not "a few lines" once nested
+# objects, nulls and escaping are handled.
+#
+# Pinned rather than left to REST Assured's own managed version (2.17.1), since
+# an implicit version is exactly what this catalog exists to prevent.
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+
 # Deliberately absent, recorded so nobody helpfully adds them:
 #
 #   org.junit.platform:junit-platform-suite
@@ -46,10 +82,18 @@ playwright = { module = "com.microsoft.playwright:playwright", version.ref = "pl
 #       and the aggregator makes every test run twice unless engines are also
 #       filtered. Selection is -Ptags. See docs/adr/0003.
 #
-#   io.qameta.allure:*        arrives in P4, with the first test that needs @Epic.
-#   io.rest-assured:*         arrives in P4.
 #   org.mariadb.jdbc:*        arrives in P7.
+#
 #   org.aspectj:aspectjweaver arrives with the first Allure @Step, not before.
+#       @Epic/@Feature/@Story/@Severity are read by allure-jupiter's own
+#       listener and need no weaver. @Step is an AspectJ around-advice and does,
+#       as a -javaagent. Since the report that would render steps does not exist
+#       yet, neither does the need.
+#
+#   org.hamcrest:hamcrest     never, as a direct dependency. REST Assured brings
+#       it, but AssertJ is the only assertion vocabulary here, so responses are
+#       extracted and asserted rather than matched inside .then(). One failure
+#       format, one set of diagnostics.
 
 [bundles]
 # None. A bundle cannot contain platform(...), so a "junit" bundle would still

@@ -104,12 +104,82 @@ yet, so neither file has been exercised. The model in
 [`THREADING.md`](THREADING.md) is reasoned from `@UsePlaywright`'s per-thread
 caching, not yet from a measurement. That measurement is P5's.
 
+### P4 — API layer and the API half of the checkout slice
+
+41 API tests, green against local and hosted from the same bytecode. The tests
+themselves were the easy part. Three things cost real time, and all three were
+the same kind of problem: an assumption about the application that reading the
+specification would not have corrected.
+
+**The OpenAPI specification disagrees with the application.** `POST /invoices` is
+documented as answering 200 and returning `invoicelines`; it answers 201 and
+returns neither `invoicelines` nor `status`. `POST /users/register` is documented
+with 422 for a duplicate email and actually answers 409. Every contract in this
+layer was therefore taken from probing the running application rather than from
+the spec, and the spec being wrong is now itself something worth asserting -
+which is precisely what the contract-validation step is for.
+
+**Two of my own tests were the bug.** The application locks a non-administrative
+account after three failed logins, checks the lock *before* the password, and
+does not clear it on a correct password. My wrong-password tests were failing
+logins against the shared seeded customer. Under method-level parallelism that is
+a race - sometimes three failures land before a success resets the counter,
+sometimes not - and once it latches, every subsequent run of the whole suite
+fails with `423 Locked`.
+
+That is the exact defect this repository argues about, committed by me, in the
+first test class I wrote. Worth recording rather than quietly fixing. The fix is
+not a retry and not a reset between tests: anything that must fail a login now
+creates its own disposable account and deletes it in `@AfterEach`. The seeded
+accounts only ever receive correct passwords, so they cannot lock. It also
+enabled a test that was not possible before - that a locked account stays locked
+even given the right password - because that can only be asserted safely against
+an account nobody else uses.
+
+Two details of the fail-fast design paid for themselves here. The client's login
+failure names the account, the target, the status and the body, so the diagnosis
+was immediate rather than a hunt. And `@AfterEach` rather than cleanup at the end
+of a test body means the account is removed when the test fails, which is the
+only case where it matters.
+
+**`./run up` was reseeding without flushing the cache.** The read endpoints are
+served from a server-side cache. `artisan migrate:fresh --seed` replaces every
+product with a new ULID, but `/products` keeps answering with the previous set,
+while cart validation goes to the database and rejects those ids as invalid. The
+result is every checkout test failing with "the selected product id is invalid"
+about a product `/products` is actively advertising.
+
+The application's own `POST /refresh` does the seed, removes generated invoices
+*and* flushes the cache - and the comment in its source names this exact trap.
+`./run up` now calls that instead. The lesson is not about caching: it is that
+the reset path was assembled out of two of the three things the application
+already did in one place.
+
+**What the buggy target turned out to be.** The hosted defect-injected build is
+not sprint 5 with faults introduced. It is an older API surface - integer product
+ids, `stock` rather than `in_stock`, no `POST /carts` route - reporting
+`"version":"5.0"` regardless. 31 of 41 tests fail against it. That is the suite
+noticing, but it is not the fair test of a defect-injected build that the plan
+assumed, and the profile is documented as such rather than quietly dropped.
+
+**Repeatability, checked rather than assumed.** Three consecutive full runs with
+no reset between them: 113 tests, green each time. That was the point of the
+disposable-account fix, so it is the thing worth measuring.
+
+**One inconsistency left open.** AssertJ is declared the sole assertion
+vocabulary and the API tests use it exclusively, but `core`'s 73 existing tests
+still use JUnit's own assertions, because converting them is churn that belongs
+in its own change rather than buried in this one.
+
 ## Measurements
 
 | Claim | How it was measured | Result |
 |---|---|---|
 | Gradle's `failOnNoDiscoveredTests` guards empty tag selections | one-test module, zero-match tag filter, Gradle 9.7.1 | **False.** Tag filtering is post-discovery. See `docs/adr/0003`. |
 | The `junit-bom` is required to stop Playwright's compile-scope `junit-jupiter-engine:5.14.1` pin winning | resolved `playwright:1.62.0 + junit-jupiter:6.1.3` in two configurations, with and without the BOM | **False on Gradle.** Identical resolution either way — Gradle is highest-wins and `junit-jupiter:6.1.3` already brings engine 6.1.3. True on Maven, which is nearest-wins. The BOM stays for versionless catalog entries and platform/jupiter consistency, which is a smaller claim than the one first written down. |
+| REST Assured brings an object mapper, so typed payloads just work | resolved `api-tests` testRuntimeClasspath with `rest-assured:6.0.1` | **False.** Jackson is declared *optional*, so no `jackson-databind` resolves at all and record payloads have no mapper. Pinned explicitly — see `docs/ARCHITECTURE.md`. |
+| Maven Central's `<release>` field names the latest release | read `maven-metadata.xml` for `assertj-core` | **Not reliably.** It reported `4.0.0-M1`. A milestone is not a release; the catalog pins `3.27.7`. |
+| The hosted `with-bugs` deployment is sprint 5 with defects injected | compared its `/products` and `/carts` against the healthy hosted build | **False.** An older API surface — integer ids, `stock` not `in_stock`, no `POST /carts` — reporting `"version":"5.0"` anyway. 31 of 41 API tests fail against it. |
 | An exception thrown from `LauncherSessionListener.launcherSessionOpened` is swallowed and logged, the way `TestExecutionListener` callbacks are | `ServiceLoader`-registered listener throwing a canary, Gradle 9.7.1, JUnit 6.1.3, single-line and multi-line messages | **False — it propagates.** `BUILD FAILED`, exit 1, zero tests executed, no results XML written, message rendered in full including line breaks. `DefaultLauncherSession` calls session listeners from its constructor, unguarded. The planned fallback — the same validation inside `ToolshopConfig.get()`, failing on the first test instead — was not needed. See `docs/adr/0004`. |
 
 ## What I would do differently

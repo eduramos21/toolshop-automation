@@ -29,6 +29,12 @@ dependencies {
     testImplementation(platform(lib("junit-bom")))
     testImplementation(lib("junit-jupiter"))
 
+    // The only assertion vocabulary. Applied to every module rather than per
+    // module so there is never a question of which one a given test uses: one
+    // failure format, one set of diagnostics, and a failure message that names
+    // the actual and expected values without anyone writing them out.
+    testImplementation(lib("assertj"))
+
     // Required on Gradle 9. Automatic test-framework dependency loading was
     // removed, so without this the test task cannot start.
     testRuntimeOnly(lib("junit-platform-launcher"))
@@ -59,6 +65,14 @@ val forwardedJunit = providers.systemPropertiesPrefixedBy("junit.")
 tasks.withType<Test>().configureEach {
     systemProperties(forwardedConfig.get())
     systemProperties(forwardedJunit.get())
+
+    // Allure resolves its results directory against user.dir, which for a test
+    // task is the MODULE directory - so results land in api-tests/allure-results,
+    // outside build/, and `clean` never touches them. Same failure mode as
+    // Playwright's outputDir. An output path is the build's business; the SUT's
+    // configuration is not, which is the line ADR 0002 draws.
+    systemProperty("allure.results.directory",
+        layout.buildDirectory.dir("allure-results").get().asFile.absolutePath)
 
     useJUnitPlatform {
         if (tagExpression.isPresent) {

@@ -59,12 +59,18 @@ The same bytecode runs against three targets. Only configuration changes.
 | Profile | Target |
 |---|---|
 | `local` | Docker on localhost |
+| `ci` | the same containers on a runner |
 | `hosted` | practicesoftwaretesting.com |
-| `buggy` | with-bugs.practicesoftwaretesting.com |
+| `buggy` | with-bugs.practicesoftwaretesting.com — a different build, see below |
 
 ```sh
 ./run test -Dtoolshop.profile=hosted
 ```
+
+The API suite is green against `local` and `hosted` from the same bytecode, with
+no recompile. It is **not** green against `buggy`: that deployment turned out to
+be an older API contract rather than sprint 5 with faults introduced, so 31 of 41
+tests fail there. Detail in [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md).
 
 Precedence, highest first: `-D` system properties, environment variables,
 `.env.local` (gitignored, local only), `application-<profile>.properties`,
@@ -83,13 +89,14 @@ api-tests/    REST Assured
 ui-tests/     Playwright page objects
 data/         database and mail verification
 scripts/      readiness check
-docs/         configuration, tags, threading, decision records
+docs/         architecture, configuration, tags, threading, decision records
 .run/         shared IntelliJ run configurations
 run           the entry point CI also calls
 ```
 
 ## Docs
 
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — modules, and a recorded reason per dependency
 - [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) — layers, keys, profiles, and what is rejected
 - [`docs/TAGS.md`](docs/TAGS.md) — the tag vocabulary, selection, and the empty-selection guard
 - [`docs/THREADING.md`](docs/THREADING.md) — the parallelism model, per module, and why

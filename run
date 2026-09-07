@@ -28,10 +28,26 @@ case "${1:-help}" in
   up)
     sut up -d
     # `docker compose up -d` returns when containers start, not when migrations
-    # finish, so wait before seeding and again after.
+    # finish, so wait before touching the API.
     "$HERE/scripts/wait-for-sut.sh"
-    sut exec -T laravel-api php artisan migrate:fresh --seed
-    "$HERE/scripts/wait-for-sut.sh"
+
+    # The application's own reset hook, not `artisan migrate:fresh --seed`.
+    #
+    # Seeding alone is not enough and the failure is nasty: the read endpoints
+    # are served from a server-side cache, so after a reseed /products keeps
+    # answering with the previous run's product IDs while cart validation - which
+    # goes to the database - rejects them as invalid. Every checkout test then
+    # fails claiming the product does not exist, and /products disagrees.
+    #
+    # POST /refresh runs migrate:fresh --seed, removes generated invoices, and
+    # flushes the cache. The application's own source comments say why.
+    #
+    # This wipes all data. It runs here, once, and never between tests.
+    printf 'Resetting application data (migrate, seed, cache flush)...\n'
+    curl -fsS -m 180 -X POST "${TOOLSHOP_API_BASE_URL:-http://localhost:8091}/refresh" \
+        -H 'Accept: application/json' >/dev/null
+
+    "$HERE/scripts/wait-for-sut.sh" >/dev/null
     printf '\nSUT ready.  UI http://localhost:4200  API http://localhost:8091  mail http://localhost:1080\n'
     ;;
 

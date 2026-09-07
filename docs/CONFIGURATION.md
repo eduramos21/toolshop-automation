@@ -75,10 +75,21 @@ and break the other.
 values are most likely to need to differ, and the whole point of the layering is
 that when they do it is a config change rather than a branch in code.
 
-`buggy` is what stops the suite being self-confirming. A suite that only ever
-runs against a healthy build demonstrates that it passes, not that it would
-notice. Locally the equivalent is `SPRINT=sprint5-with-bugs` on the same compose
-files.
+`buggy` needs a correction to what was first written here. The intent was a
+target that stops the suite being self-confirming: a suite that only ever runs
+against a healthy build demonstrates that it passes, not that it would notice.
+
+Measured 2026-09, the hosted defect-injected deployment is **an older API
+surface**, not sprint 5 with faults introduced — integer product ids instead of
+ULIDs, `stock` instead of `in_stock`, and no `POST /carts` route at all — while
+still reporting `"version":"5.0"`. 31 of 41 API tests fail against it. That is
+the suite noticing a different contract, not the suite passing or failing a fair
+test, so `buggy` is not a target the suite is expected to be green against.
+
+The target that genuinely is the same version with defects injected is local:
+`SPRINT=sprint5-with-bugs` on the same compose files. It serves the same URLs as
+`local`, so it needs no profile of its own — the SUT changes, the configuration
+does not.
 
 ## What is rejected, and why
 
