@@ -6,6 +6,40 @@ demo application, running identically on a laptop and in GitHub Actions.
 
 Java 21 · Gradle 9.7.1 · JUnit 6 · Playwright · REST Assured · Allure
 
+## Prerequisites
+
+Five, and the first two are the only ones most machines lack.
+
+| | Why | Check |
+|---|---|---|
+| **Docker** with Compose v2 | runs the application under test | `docker compose version` |
+| **JDK 21** | the build's toolchain; the wrapper supplies Gradle, not Java | `java -version` |
+| `curl` | readiness poll and the data reset | `curl --version` |
+| `python3` | `scripts/test-summary.sh` | `python3 -V` |
+| `node` / `npx` | `./run report` renders Allure 3 through `npx` | `npx -v` |
+
+On macOS: Docker Desktop, then `brew install temurin@21 node` — `curl` and
+`python3` are already there. On Debian or Ubuntu:
+`apt install docker.io docker-compose-v2 openjdk-21-jdk curl python3 nodejs npm`.
+
+Toolchain auto-download is enabled but no toolchain repository is configured, so
+the build uses a JDK 21 it finds locally rather than fetching one. On JDK 17 you
+will get "no matching toolchains", not a download.
+
+**Plain Linux, no Docker Desktop:** register the cross-architecture emulator
+once, or the web proxy will not start —
+
+```sh
+docker run --privileged --rm tonistiigi/binfmt --install all
+```
+
+The application's images are split between `linux/amd64` (API, UI) and
+`linux/arm64` (web proxy, cron), so one half is always emulated. Docker Desktop
+arranges that itself. `exec format error` in `./run logs` is this.
+
+First run pulls about 2.6 GB of images plus the pinned browser, so budget a few
+minutes for it; every run after is seconds.
+
 ## Quick start
 
 ```sh
@@ -20,19 +54,12 @@ No clone of the application is needed. `docker/docker-compose.sut.yml` pins ever
 image by digest, so a laptop and a CI runner bring up the same thing — set
 `TOOLSHOP_SUT_DIR` only if you want to run against a clone you are editing.
 
-One wrinkle worth knowing: the application's images are split across
-architectures — the API and UI are `linux/amd64`, the web proxy and cron are
-`linux/arm64` — so whichever half does not match your machine runs emulated.
-Docker Desktop arranges that itself; on plain Linux you may need
-`docker run --privileged --rm tonistiigi/binfmt --install all` once. If `web`
-logs `exec format error`, that is this.
-
 `./run status` shows what is up.
 
-The passwords are the seeded accounts (published in the SUT's own README) and the
-local database.
-They are supplied from the environment rather than committed, because a rule
-relaxed for values that do not matter is not in place for the ones that do. Skip
+The passwords are the seeded accounts — published in the application's own
+README — and the local database. They are supplied from the environment rather
+than committed, because a rule relaxed for values that do not matter is not in
+place for the ones that do. Skip
 the step and the next Gradle invocation fails immediately, naming both keys and
 the three ways to supply each — before any test runs, so nothing looks like a
 product bug. See [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md).
