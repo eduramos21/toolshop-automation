@@ -28,12 +28,12 @@ jobs:
     name: secret scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # gitleaks needs history to scan it. A secret that was committed and
           # then removed is still a secret.
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -52,14 +52,14 @@ jobs:
       TOOLSHOP_DB_PASSWORD: ${{ vars.TOOLSHOP_DB_PASSWORD }}
       TOOLSHOP_PROFILE: ci
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       # Fail in seconds rather than after a two-minute container start. The
       # configuration layer already reports a missing credential clearly, but it
@@ -89,7 +89,7 @@ jobs:
       # falls the other way and Docker Desktop emulates silently. See
       # docs/adr/0006.
       - name: Register the cross-architecture emulator
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       # Playwright's Java version and its browser build are coupled, so the
       # browser comes from the same pinned artifact rather than from a separate
@@ -130,7 +130,7 @@ jobs:
 
       - name: Upload the report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: allure-report
           path: build/allure-report
@@ -140,7 +140,7 @@ jobs:
       # without downloading a whole report.
       - name: Upload failure evidence
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-evidence
           path: ui-tests/build/playwright
@@ -168,12 +168,12 @@ jobs:
       TOOLSHOP_DB_PASSWORD: ${{ vars.TOOLSHOP_DB_PASSWORD }}
       TOOLSHOP_PROFILE: ci
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       # Fail in seconds rather than after a two-minute container start. The
       # configuration layer already reports a missing credential clearly, but it
@@ -203,7 +203,7 @@ jobs:
       # falls the other way and Docker Desktop emulates silently. See
       # docs/adr/0006.
       - name: Register the cross-architecture emulator
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
       - run: ./gradlew :ui-tests:installBrowsers
       - run: ./run up
       - name: Run the quarantined tests
