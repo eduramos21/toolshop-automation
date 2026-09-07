@@ -71,8 +71,14 @@ tasks.withType<Test>().configureEach {
     // outside build/, and `clean` never touches them. Same failure mode as
     // Playwright's outputDir. An output path is the build's business; the SUT's
     // configuration is not, which is the line ADR 0002 draws.
-    systemProperty("allure.results.directory",
-        layout.buildDirectory.dir("allure-results").get().asFile.absolutePath)
+    val allureResults = layout.buildDirectory.dir("allure-results")
+    systemProperty("allure.results.directory", allureResults.get().asFile.absolutePath)
+
+    // Declared as an output so Gradle removes the previous run's results when
+    // this task re-executes. Without it the directory accumulates and a report
+    // shows one test six times - once per run - which reads as flakiness in
+    // something that only ever ran once per invocation.
+    outputs.dir(allureResults)
 
     useJUnitPlatform {
         if (tagExpression.isPresent) {

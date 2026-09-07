@@ -72,6 +72,20 @@ those. Having measured that the trace renders inline, video would cost every run
 something to duplicate what is already there. If the trace viewer ever stops
 being reachable, `contextOptions.setRecordVideoDir` is the fallback.
 
+**The results directory is a declared task output.** Without that it
+accumulates across runs, and a report then shows one test once per run it has
+ever had - six copies of a single quarantined test, which reads as flakiness in
+something that only ever ran once per invocation. Declaring
+`build/allure-results` as an output of the `Test` task makes Gradle remove the
+previous run's results when the task re-executes, which is the same mechanism
+that already keeps the JUnit XML honest.
+
+**The report covers the product tests, not the framework's own.** `core` and
+`data` hold unit tests of the configuration loader, the tag vocabulary and the
+mail parsing; they carry no Allure dependency and appear in no behaviour tree,
+because they are not behaviours of the application. 51 of the 136 tests are in
+the report by design.
+
 **A parameterised failure's trace is the last invocation's.** Playwright names
 the output directory after the test method, not the invocation, so all cases of
 an `@EnumSource` test write to one path and overwrite each other. Recorded rather
