@@ -57,6 +57,32 @@ and break the other.
 | `toolshop.admin.password` | **none** | secret |
 | `toolshop.customer.email` | seeded customer | |
 | `toolshop.customer.password` | **none** | secret |
+| `toolshop.db.url` | per profile | optional; JDBC URL, `local`/`ci` only |
+| `toolshop.db.username` | per profile | optional; required if the URL is set |
+| `toolshop.db.password` | **none** | optional **secret**; required if the URL is set |
+| `toolshop.mail.base-url` | per profile | optional; the mail catcher, `local`/`ci` only |
+
+### Optional keys, and why they are not "skip if missing"
+
+The database and the mail catcher are containers on the same machine as a local
+or CI run. Against the hosted instance there is no database to reach and no
+mailbox to read, so those keys are absent there and the configuration still
+resolves.
+
+Optional does **not** mean a test quietly skips. A test that needs one of them
+and cannot have it fails, naming the keys and the tag expression that excludes
+it — a silently skipped test is the same green-with-no-signal outcome the
+empty-selection guard exists to prevent, one level down:
+
+```sh
+./run test -Ptags='!db'      # a target with no reachable database
+```
+
+The database URL is what declares that a target has a database, so if it is set
+the credentials are required too. That rule is anchored on the URL rather than
+treated as a three-key group, and the difference was measured: a developer's
+`.env.local` keeps `TOOLSHOP_DB_PASSWORD` set permanently, and a group rule made
+every `hosted` run fail over a password nothing was going to use.
 
 ## Profiles
 

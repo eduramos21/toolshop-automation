@@ -11,9 +11,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ThreadLocalRandom;
 import toolshop.automation.api.payload.Address;
 import toolshop.automation.api.payload.AuthToken;
 import toolshop.automation.api.payload.CartItem;
@@ -22,6 +24,7 @@ import toolshop.automation.api.payload.PaymentMethod;
 import toolshop.automation.api.payload.PostcodeLookup;
 import toolshop.automation.api.payload.RegisterRequest;
 import toolshop.automation.core.config.ToolshopConfig;
+import toolshop.automation.core.testdata.TestDataRegistry;
 
 /**
  * The API client: a request specification, an authentication token, and the few
@@ -138,18 +141,122 @@ public final class ToolshopApi {
         return response.as(PostcodeLookup.class);
     }
 
-    /** The id of some product that is in stock, for tests that need any product. */
-    public String someProductInStock() {
-        Response response = anonymous().get("/products");
-        List<String> ids = response.jsonPath()
-                .getList("data.findAll { it.in_stock == true }.id", String.class);
+    /**
+     * Products the application caps at one per cart, so a test that buys several
+     * of an arbitrary product never picks one.
+     *
+     * <p>By name, because that is how the application does it:
+     * {@code CartService} compares {@code $product->name === 'Thor Hammer'} and
+     * rejects any quantity above one. The cap is not in the product payload, so
+     * there is nothing to detect it by - a framework that wants to avoid it has
+     * to know about it.
+     */
+    private static final Set<String> LIMITED_TO_ONE_PER_CART = Set.of("Thor Hammer");
 
-        if (ids == null || ids.isEmpty()) {
-            throw new IllegalStateException("no product is in stock at " + config.apiBaseUrl()
-                    + ". Seed the application: docker compose exec laravel-api"
-                    + " php artisan migrate:fresh --seed");
+    /** A bound on the catalogue walk, so a misconfigured target cannot loop. */
+    private static final int MAX_CATALOGUE_PAGES = 20;
+
+    /**
+     * Some product that is in stock and can be bought more than once.
+     *
+     * <p>Returns the name and price as well as the id, because a UI test needs
+     * to search for the name and check the price the storefront renders, and
+     * fetching those separately would be three calls for one fact.
+     *
+     * <p>Two things here are the result of getting it wrong first, and both are
+     * about what "any product" has to mean.
+     *
+     * <p><b>It pages.</b> The first version read page one only. A checkout
+     * reduces stock and the application does not guard the floor - stock reaches
+     * negative numbers - so after a couple of full runs the first page was eight
+     * out-of-stock products and one that could not be bought twice, and the
+     * suite had quietly consumed its own test data.
+     *
+     * <p><b>It picks at random rather than first.</b> Always taking the first
+     * candidate concentrates every purchase in a run on one product: roughly
+     * fifteen units per full run against a seeded stock of twenty-five, so two
+     * runs exhaust it. Spreading across the catalogue makes depletion a
+     * non-issue. The cost is that the product varies between runs, which is why
+     * every assertion that uses it names it in its failure message.
+     *
+     * <p>Stock is still consumed - that is what buying is - and only
+     * {@code ./run up} restores it. What is fixed is a suite that could no longer
+     * run because of what it had bought.
+     */
+    public Product anyProductInStock() {
+        int lastPage = 1;
+
+        for (int page = 1; page <= lastPage && page <= MAX_CATALOGUE_PAGES; page++) {
+            Response response = anonymous().queryParam("page", page).get("/products");
+            if (response.statusCode() != 200) {
+                throw new IllegalStateException("could not read the catalogue at "
+                        + config.apiBaseUrl() + ": HTTP " + response.statusCode());
+            }
+            lastPage = response.jsonPath().getInt("last_page");
+
+            List<Map<String, Object>> candidates = response.jsonPath()
+                    .getList("data.findAll { it.in_stock == true }");
+            List<Map<String, Object>> buyable = candidates == null ? List.of() : candidates.stream()
+                    .filter(candidate ->
+                            !LIMITED_TO_ONE_PER_CART.contains(String.valueOf(candidate.get("name"))))
+                    .toList();
+
+            if (!buyable.isEmpty()) {
+                Map<String, Object> product =
+                        buyable.get(ThreadLocalRandom.current().nextInt(buyable.size()));
+                return new Product(
+                        String.valueOf(product.get("id")),
+                        String.valueOf(product.get("name")),
+                        Double.parseDouble(String.valueOf(product.get("price"))));
+            }
         }
-        return ids.get(0);
+
+        throw new IllegalStateException("no product at " + config.apiBaseUrl()
+                + " is both in stock and free of a per-cart limit, across " + lastPage
+                + " page(s) of the catalogue.\\nBuying reduces stock and nothing restores it"
+                + " automatically. Reset the application data:\\n  ./run up");
+    }
+
+    /** Just enough of a product for a test to act on it. */
+    public record Product(String id, String name, double price) {
+    }
+
+    /**
+     * A search term the application's own search matches, with the products it
+     * returns for it.
+     *
+     * <p>Derived from the application rather than chosen, because the search is
+     * not a substring match and a reasonable-looking term returns nothing.
+     * {@code /products/search} runs
+     * {@code MATCH(name) AGAINST(? IN BOOLEAN MODE)}, which requires every word:
+     * searching a product's own full name - "Claw Hammer with Shock Reduction
+     * Grip" - returns zero rows, because "with" is a MySQL stopword. The first
+     * two words of the same name return three.
+     *
+     * <p>Taking the term and the expected ids from here keeps the UI test about
+     * the UI: does the storefront render what the search endpoint returned. It
+     * is not a test of the ranking.
+     */
+    public Search aSearchThatMatches() {
+        String name = anyProductInStock().name();
+        String[] words = name.split("\\s+");
+        String term = words.length >= 2 ? words[0] + " " + words[1] : words[0];
+
+        Response response = anonymous().queryParam("q", term).get("/products/search");
+        if (response.statusCode() != 200) {
+            throw new IllegalStateException("product search failed for '" + term + "': HTTP "
+                    + response.statusCode() + " " + response.asString());
+        }
+        List<String> ids = response.jsonPath().getList("data.id", String.class);
+        if (ids == null || ids.isEmpty()) {
+            throw new IllegalStateException("the application's own search returns nothing for '"
+                    + term + "', taken from the product name '" + name + "'");
+        }
+        return new Search(term, ids);
+    }
+
+    /** A term and the product ids the application returns for it. */
+    public record Search(String term, List<String> productIds) {
     }
 
     /** A cart with one item in it. Returns the cart id. */
@@ -202,8 +309,13 @@ public final class ToolshopApi {
      * <p>The seeded accounts therefore only ever receive correct passwords.
      * Anything that must fail a login gets one of these. Administrators are
      * exempt from locking, which is why cleanup can still authenticate.
+     *
+     * <p>The registry is a required argument, not a convenience. It is the only
+     * way to create one of these, so a test cannot create an account without
+     * also saying how it is removed - and the removal then runs in
+     * {@code afterEach}, including when the test fails.
      */
-    public DisposableCustomer createDisposableCustomer() {
+    public DisposableCustomer createDisposableCustomer(TestDataRegistry registry) {
         RegisterRequest request = newCustomer(
                 Address.from(addressFor("NL", "1011AB"), "Test Street", "1"));
         Response response = registerCustomer(request);
@@ -213,18 +325,28 @@ public final class ToolshopApi {
                     + config.apiBaseUrl() + ": HTTP " + response.statusCode() + " "
                     + response.asString());
         }
-        return new DisposableCustomer(response.jsonPath().getString("id"),
+        String id = response.jsonPath().getString("id");
+        registry.deleteAfterwards("customer " + request.email(), () -> requireCustomerDeleted(id));
+        return new DisposableCustomer(id,
                 new ToolshopConfig.Credentials(request.email(), request.password()));
     }
 
     /**
-     * An account belonging to one test, which is responsible for deleting it.
+     * Removes an account and insists that it worked.
      *
-     * <p>P7 replaces the remembering-to-delete part with a registry and an
-     * extension. Until then it is an {@code @AfterEach}, which is the part that
-     * matters: it runs when the test fails, and a test that fails midway is
-     * exactly the one that leaves something behind.
+     * <p>Registered as the cleanup for every disposable customer, so a delete
+     * that silently failed becomes a failing test rather than a row the next run
+     * inherits.
      */
+    public void requireCustomerDeleted(String userId) {
+        int status = deleteCustomer(userId);
+        if (status != 204) {
+            throw new IllegalStateException(
+                    "deleting user " + userId + " answered HTTP " + status + ", expected 204");
+        }
+    }
+
+    /** An account belonging to one test, removed for it by the registry. */
     public record DisposableCustomer(String id, ToolshopConfig.Credentials credentials) {
     }
 

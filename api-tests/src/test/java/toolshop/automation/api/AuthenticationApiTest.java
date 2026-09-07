@@ -9,12 +9,12 @@ import io.qameta.allure.Severity;
 import io.qameta.allure.SeverityLevel;
 import io.qameta.allure.Story;
 import io.restassured.response.Response;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import toolshop.automation.api.ToolshopApi.DisposableCustomer;
 import toolshop.automation.api.payload.AuthToken;
 import toolshop.automation.api.payload.LoginRequest;
 import toolshop.automation.core.config.ToolshopConfig;
+import toolshop.automation.core.testdata.TestDataRegistry;
 import toolshop.automation.core.tags.Api;
 import toolshop.automation.core.tags.Auth;
 import toolshop.automation.core.tags.Regression;
@@ -28,7 +28,7 @@ import toolshop.automation.core.tags.Smoke;
  * failed attempts and a correct password does not clear it, so failing a login
  * against the shared seeded customer poisons every subsequent run - and under
  * method-level parallelism it does so intermittently, which is worse. See
- * {@link ToolshopApi#createDisposableCustomer()}.
+ * {@link ToolshopApi#createDisposableCustomer}.
  */
 @Api
 @Auth
@@ -39,21 +39,9 @@ class AuthenticationApiTest {
     private final ToolshopApi api;
     private final ToolshopConfig config;
 
-    private DisposableCustomer throwaway;
-
     AuthenticationApiTest(ToolshopApi api, ToolshopConfig config) {
         this.api = api;
         this.config = config;
-    }
-
-    @AfterEach
-    void removeAnyAccountThisTestCreated() {
-        if (throwaway == null) {
-            return;
-        }
-        assertThat(api.deleteCustomer(throwaway.id()))
-                .as("cleanup of %s must succeed, or the next run inherits it", throwaway.id())
-                .isEqualTo(204);
     }
 
     @Test
@@ -83,10 +71,10 @@ class AuthenticationApiTest {
     @Test
     @Story("A wrong password is rejected")
     @Severity(SeverityLevel.CRITICAL)
-    void loginWithAWrongPasswordIsRejected() {
+    void loginWithAWrongPasswordIsRejected(TestDataRegistry data) {
         // Given a disposable account, because this attempt increments its
         // failed-login counter
-        throwaway = api.createDisposableCustomer();
+        DisposableCustomer throwaway = api.createDisposableCustomer(data);
 
         // When it is used with the wrong password
         Response response = login(throwaway.credentials().email(), "not-the-password");
@@ -103,9 +91,9 @@ class AuthenticationApiTest {
     @Test
     @Story("An unknown email is rejected exactly as a wrong password is")
     @Severity(SeverityLevel.CRITICAL)
-    void loginRevealsNothingAboutWhichAccountsExist() {
+    void loginRevealsNothingAboutWhichAccountsExist(TestDataRegistry data) {
         // Given one real account given the wrong password, and one that does not exist
-        throwaway = api.createDisposableCustomer();
+        DisposableCustomer throwaway = api.createDisposableCustomer(data);
 
         Response wrongPassword = login(throwaway.credentials().email(), "not-the-password");
         Response unknownAccount = login("no-such-account@example.test", "not-the-password");
@@ -127,9 +115,9 @@ class AuthenticationApiTest {
     @Regression
     @Story("An account locks after three failed attempts and a correct password does not recover it")
     @Severity(SeverityLevel.CRITICAL)
-    void anAccountLocksAfterThreeFailedAttemptsAndStaysLocked() {
+    void anAccountLocksAfterThreeFailedAttemptsAndStaysLocked(TestDataRegistry data) {
         // Given a disposable account
-        throwaway = api.createDisposableCustomer();
+        DisposableCustomer throwaway = api.createDisposableCustomer(data);
         String email = throwaway.credentials().email();
 
         // When three logins fail

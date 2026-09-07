@@ -5,9 +5,8 @@
 #   ./run up            bring the SUT up, wait for it, seed it, wait again
 #   ./run down          stop the SUT
 #   ./run test          run the whole suite
+#   ./run report        render the Allure report from the last run and open it
 #   ./run status        where things are and whether they answer
-#
-# `report` arrives in P6 with Allure. Not scaffolded ahead of it.
 set -eu
 
 SUT_DIR="${TOOLSHOP_SUT_DIR:-../practice-software-testing}"
@@ -62,6 +61,35 @@ case "${1:-help}" in
     "$HERE/gradlew" test "$@"
     ;;
 
+  report)
+    # Allure 3, from every module's results at once.
+    #
+    # The renderer is a Node CLI, not a Gradle plugin: the Allure Gradle plugin
+    # adds dependencies and an AspectJ javaagent to the build, and the only thing
+    # needed here is a report generator. npx pins the version on the invocation.
+    #
+    # Results are written under each module's build/ (the default resolves
+    # against the module directory, which puts them outside build/ where `clean`
+    # never finds them - the conventions plugin redirects them).
+    results=$(find "$HERE" -type d -name allure-results -path '*/build/*' 2>/dev/null)
+    if [ -z "$results" ]; then
+        printf 'No results to report. Run the suite first:\n  ./run test\n' >&2
+        exit 1
+    fi
+
+    printf 'Generating from:\n'
+    printf '  %s\n' $results
+    # shellcheck disable=SC2086
+    npx --yes allure@3 generate $results \
+        -o "$HERE/build/allure-report" --name 'Toolshop automation'
+    printf '\nReport: %s/build/allure-report/index.html\n' "$HERE"
+    # Serve it only for a human. In CI stdout is not a terminal and `open`
+    # would block the job forever.
+    if [ -t 1 ]; then
+        npx --yes allure@3 open "$HERE/build/allure-report"
+    fi
+    ;;
+
   status)
     printf '%-12s %-34s %s\n' SERVICE URL STATE
     for entry in \
@@ -77,7 +105,7 @@ case "${1:-help}" in
     ;;
 
   *)
-    printf 'usage: ./run up | down | test | status\n' >&2
+    printf 'usage: ./run up | down | test [gradle args] | report | status\n' >&2
     exit 2
     ;;
 esac

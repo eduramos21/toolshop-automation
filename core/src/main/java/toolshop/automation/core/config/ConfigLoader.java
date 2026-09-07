@@ -14,6 +14,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.TreeMap;
 
@@ -196,7 +197,7 @@ final class ConfigLoader {
                     break;
                 }
             }
-            if (!values.containsKey(key)) {
+            if (!values.containsKey(key) && !key.optional()) {
                 problems.add(missing(key));
             }
         }
@@ -211,6 +212,9 @@ final class ConfigLoader {
         String customerEmail = text(values, ConfigKey.CUSTOMER_EMAIL, problems);
         String customerPassword = text(values, ConfigKey.CUSTOMER_PASSWORD, problems);
 
+        Optional<ToolshopConfig.Database> database = database(values, problems);
+        Optional<URI> mailBaseUrl = Optional.ofNullable(url(values, ConfigKey.MAIL_BASE_URL, problems));
+
         if (!problems.isEmpty()) {
             throw new ConfigurationException(report(problems, profile, tiers));
         }
@@ -223,7 +227,53 @@ final class ConfigLoader {
                 apiTimeout,
                 headless,
                 new ToolshopConfig.Credentials(adminEmail, adminPassword),
-                new ToolshopConfig.Credentials(customerEmail, customerPassword));
+                new ToolshopConfig.Credentials(customerEmail, customerPassword),
+                database,
+                mailBaseUrl);
+    }
+
+    /**
+     * The database URL is what declares that this target has a reachable
+     * database. If it is set, the credentials must be too.
+     *
+     * <p>Anchored on the URL rather than treated as a three-key group, and that
+     * distinction was measured rather than reasoned: a developer's
+     * {@code .env.local} keeps {@code TOOLSHOP_DB_PASSWORD} set permanently, so
+     * a group rule made every {@code hosted} run fail with "the database keys
+     * are all-or-nothing" over a password nothing was going to use. A leftover
+     * credential in the environment is harmless; a URL with no credentials is
+     * a configuration someone stopped halfway through, and it fails at the first
+     * query as a connection error instead of here as a configuration error.
+     */
+    private static Optional<ToolshopConfig.Database> database(
+            Map<ConfigKey, Resolved> values, List<String> problems) {
+
+        if (!values.containsKey(ConfigKey.DB_URL)) {
+            return Optional.empty();
+        }
+
+        List<ConfigKey> missing = List.of(ConfigKey.DB_USERNAME, ConfigKey.DB_PASSWORD).stream()
+                .filter(key -> !values.containsKey(key))
+                .toList();
+        if (!missing.isEmpty()) {
+            problems.add(ConfigKey.DB_URL.key() + " is set, so the credentials are required too. Missing: "
+                    + missing.stream().map(ConfigKey::key)
+                            .collect(java.util.stream.Collectors.joining(", "))
+                    + ". Supply the password as " + ConfigKey.DB_PASSWORD.environmentVariable() + ".");
+            return Optional.empty();
+        }
+
+        String url = text(values, ConfigKey.DB_URL, problems);
+        String username = text(values, ConfigKey.DB_USERNAME, problems);
+        String password = text(values, ConfigKey.DB_PASSWORD, problems);
+
+        if (url != null && !url.startsWith("jdbc:")) {
+            problems.add(shapeProblem(ConfigKey.DB_URL, values, "a JDBC URL beginning 'jdbc:'", url));
+            return Optional.empty();
+        }
+        return url == null || username == null || password == null
+                ? Optional.empty()
+                : Optional.of(new ToolshopConfig.Database(url, username, password));
     }
 
     /** A value and the tier it came from. The provenance is half the diagnostic. */

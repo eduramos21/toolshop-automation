@@ -2,6 +2,7 @@ package toolshop.automation.core.config;
 
 import java.net.URI;
 import java.time.Duration;
+import java.util.Optional;
 
 /**
  * The resolved configuration for one run: immutable, and resolved exactly once
@@ -20,6 +21,9 @@ import java.time.Duration;
  * @param headless    whether browsers launch headless
  * @param admin       a seeded account with administrative rights
  * @param customer    a seeded account with customer rights
+ * @param database    the application's database, present only for a target whose
+ *                    database is reachable - local and CI, not hosted
+ * @param mailBaseUrl the mail catcher, present on the same terms
  */
 public record ToolshopConfig(
         String profile,
@@ -29,7 +33,9 @@ public record ToolshopConfig(
         Duration apiTimeout,
         boolean headless,
         Credentials admin,
-        Credentials customer) {
+        Credentials customer,
+        Optional<Database> database,
+        Optional<URI> mailBaseUrl) {
 
     private static ToolshopConfig instance;
 
@@ -53,6 +59,21 @@ public record ToolshopConfig(
             instance = ConfigLoader.load();
         }
         return instance;
+    }
+
+    /**
+     * Connection details for the application's own database.
+     *
+     * <p>Read-only, and only ever to verify what the application wrote. Seeding
+     * through here would skip the validation and side effects that make a row
+     * real, which is why the test data is created through the API instead.
+     */
+    public record Database(String jdbcUrl, String username, String password) {
+
+        @Override
+        public String toString() {
+            return jdbcUrl + " as " + username + " / ******";
+        }
     }
 
     /**

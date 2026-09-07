@@ -48,7 +48,7 @@ class CartApiTest {
     @Severity(SeverityLevel.CRITICAL)
     void anItemAddedToACartIsReturnedWithItsQuantity() {
         // Given an empty cart and a product that is in stock
-        String productId = api.someProductInStock();
+        String productId = api.anyProductInStock().id();
         String cartId = api.anonymous().post("/carts").jsonPath().getString("id");
 
         // When two of it are added
@@ -83,7 +83,7 @@ class CartApiTest {
     @Test
     @Story("A quantity below one is rejected")
     void aQuantityBelowOneIsRejected() {
-        String productId = api.someProductInStock();
+        String productId = api.anyProductInStock().id();
         String cartId = api.anonymous().post("/carts").jsonPath().getString("id");
 
         Response response = api.anonymous()

@@ -104,6 +104,19 @@ Pull requests run `-Ptags='!quarantine'`. A scheduled job runs
 `-Ptags=quarantine`, so a quarantined test stays visible rather than becoming
 permanently ignored.
 
+It is also the right mark for a **known defect in the application under test**,
+which is what the one quarantined test here is. `CheckoutDefectUiTest` asserts
+that a single press of "finish" places an order; it does not, and the
+application is third-party so it cannot be fixed here. The alternatives were
+worse: asserting the broken behaviour turns a defect into a requirement and goes
+red when it is fixed, and deleting the test loses the finding. Quarantine says
+what should happen and marks it known.
+
+`@Db` marks the tests that need a reachable database or mailbox — the local and
+CI targets. A completed order cannot be undone through the API, so a checkout
+test can only clean up after itself where the database is reachable. For a target
+without one: `./run test -Ptags='!db'`.
+
 ## IDE run configurations, and their honest limit
 
 Four shared Gradle configurations are committed in `.run/`: **All tests**,

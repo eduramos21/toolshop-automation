@@ -352,6 +352,101 @@ class ConfigLoaderTest {
         }
     }
 
+    // -------------------------------------------------------- optional keys
+
+    @Nested
+    @DisplayName("optional keys")
+    class OptionalKeys {
+
+        /**
+         * The database and mail catcher exist for a local or CI target and not
+         * for the hosted one, so their absence is a configuration that resolves
+         * rather than a configuration that fails.
+         */
+        @Test
+        void aTargetWithNoDatabaseOrMailCatcherStillResolves() {
+            ToolshopConfig config = ConfigLoader.resolve(sources().build());
+
+            assertTrue(config.database().isEmpty(), "no database keys were supplied");
+            assertTrue(config.mailBaseUrl().isEmpty(), "no mail keys were supplied");
+        }
+
+        @Test
+        void aFullySuppliedDatabaseGroupResolves() {
+            ToolshopConfig config = ConfigLoader.resolve(sources()
+                    .profileFileEntry("toolshop.db.url", "jdbc:mariadb://localhost:3306/toolshop")
+                    .profileFileEntry("toolshop.db.username", "user")
+                    .environment("TOOLSHOP_DB_PASSWORD", "a-secret")
+                    .build());
+
+            assertTrue(config.database().isPresent(), "the database should have resolved");
+            assertEquals("jdbc:mariadb://localhost:3306/toolshop", config.database().orElseThrow().jdbcUrl());
+        }
+
+        /**
+         * Half a database is worse than none: it fails at the first query as a
+         * connection error rather than here as a configuration error.
+         */
+        @Test
+        void aUrlWithNoCredentialsIsAnError() {
+            ConfigurationException failure = assertThrows(ConfigurationException.class,
+                    () -> ConfigLoader.resolve(sources()
+                            .profileFileEntry("toolshop.db.url", "jdbc:mariadb://localhost:3306/toolshop")
+                            .build()));
+
+            assertProblem(failure, "toolshop.db.url is set, so the credentials are required too");
+            assertProblem(failure, "Missing: toolshop.db.username, toolshop.db.password");
+        }
+
+        /**
+         * The case that made the rule anchor on the URL. A developer's
+         * .env.local keeps TOOLSHOP_DB_PASSWORD set permanently; switching to a
+         * profile with no database must not fail over it.
+         */
+        @Test
+        void aLeftoverPasswordWithNoUrlIsIgnored() {
+            ToolshopConfig config = ConfigLoader.resolve(sources()
+                    .environment("TOOLSHOP_DB_PASSWORD", "still-in-my-env-local")
+                    .build());
+
+            assertTrue(config.database().isEmpty(),
+                    "a password with no URL does not describe a database");
+        }
+
+        @Test
+        void aDatabaseUrlThatIsNotAJdbcUrlIsRejected() {
+            ConfigurationException failure = assertThrows(ConfigurationException.class,
+                    () -> ConfigLoader.resolve(sources()
+                            .profileFileEntry("toolshop.db.url", "mariadb://localhost:3306/toolshop")
+                            .profileFileEntry("toolshop.db.username", "user")
+                            .environment("TOOLSHOP_DB_PASSWORD", "a-secret")
+                            .build()));
+
+            assertProblem(failure, "must be a JDBC URL beginning 'jdbc:'");
+        }
+
+        /** Optional does not exempt a secret from the committed-file rule. */
+        @Test
+        void anOptionalSecretStillCannotAppearInACommittedFile() {
+            ConfigurationException failure = assertThrows(ConfigurationException.class,
+                    () -> ConfigLoader.resolve(sources()
+                            .defaultsEntry("toolshop.db.password", "root")
+                            .build()));
+
+            assertProblem(failure, "toolshop.db.password, which is a secret");
+        }
+
+        @Test
+        void aMailBaseUrlIsShapeCheckedLikeAnyOtherUrl() {
+            ConfigurationException failure = assertThrows(ConfigurationException.class,
+                    () -> ConfigLoader.resolve(sources()
+                            .profileFileEntry("toolshop.mail.base-url", "localhost:1080")
+                            .build()));
+
+            assertProblem(failure, "must be an absolute http or https URL");
+        }
+    }
+
     // ------------------------------------------------------------------ report
 
     @Nested
@@ -441,13 +536,22 @@ class ConfigLoaderTest {
     @DisplayName("the committed profile files")
     class CommittedFiles {
 
+        /**
+         * Every secret the committed files expect, and nothing else. The point
+         * of these tests is that a profile resolves given only what the
+         * environment is supposed to supply.
+         */
+        private final Map<String, String> SECRETS_FROM_THE_ENVIRONMENT = Map.of(
+                "TOOLSHOP_ADMIN_PASSWORD", "a-secret",
+                "TOOLSHOP_CUSTOMER_PASSWORD", "a-secret",
+                "TOOLSHOP_DB_PASSWORD", "a-secret");
+
         @Test
         void everyProfileResolvesWithOnlySecretsSupplied() {
             for (String profile : ConfigLoader.PROFILES) {
                 ConfigLoader.Sources sources = new ConfigLoader.Sources(
                         Map.of(ConfigLoader.PROFILE_KEY, profile),
-                        Map.of("TOOLSHOP_ADMIN_PASSWORD", "a-secret",
-                                "TOOLSHOP_CUSTOMER_PASSWORD", "a-secret"),
+                        SECRETS_FROM_THE_ENVIRONMENT,
                         Map.of(),
                         null,
                         ConfigLoader.propertyFilesFromClasspath());
@@ -466,8 +570,7 @@ class ConfigLoaderTest {
         void theLocalProfilePointsAtTheContainers() {
             ConfigLoader.Sources sources = new ConfigLoader.Sources(
                     Map.of(),
-                    Map.of("TOOLSHOP_ADMIN_PASSWORD", "a-secret",
-                            "TOOLSHOP_CUSTOMER_PASSWORD", "a-secret"),
+                    SECRETS_FROM_THE_ENVIRONMENT,
                     Map.of(),
                     null,
                     ConfigLoader.propertyFilesFromClasspath());

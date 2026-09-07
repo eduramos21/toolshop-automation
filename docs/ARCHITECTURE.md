@@ -29,7 +29,24 @@ use" is not one.
 | `com.microsoft.playwright:playwright` | Browser automation with auto-waiting, tracing, and `getByTestId` as a first-class locator. The last replaces a locator strategy, not a library. | Selenium. Would reintroduce explicit waits, which the brief forbids. |
 | `io.rest-assured:rest-assured` | Request specifications shared across a suite, and a filter mechanism that applies to every call. That second one is load-bearing: contract validation against the OpenAPI spec is applied as a filter in the shared client, so it cannot be opt-in. | `java.net.http.HttpClient`. Adequate for requests; has no equivalent of a filter every call passes through, so a per-call convention would be the only option. |
 | `com.fasterxml.jackson.core:jackson-databind` | REST Assured declares Jackson **optional**, so typed payloads silently have no object mapper — measured: the resolved classpath had none. Payload records need one. | `Map.of("emial", …)` for request bodies. The same silent-typo failure the composed tag annotations exist to remove. A hand-rolled record serialiser is not "a few lines" once nesting, nulls and escaping are handled. |
+| `org.mariadb.jdbc:mariadb-java-client` | Reading the rows a checkout wrote, to confirm the storefront's success message corresponds to an order. `PreparedStatement` only. | Trusting the API's own read endpoints. They are served from a cache, so they can agree with a test and disagree with the database — which is exactly the failure this catches. |
 | `io.qameta.allure:allure-bom` + `allure-jupiter` | A behaviour tree — epic, feature, story, severity — from the first test, so the report has a top to its hierarchy on the day it is first generated rather than a flat list of class names. | `allure-junit5` (a relocation stub); Gradle's own HTML report (no behaviour hierarchy, no attachments). |
+
+No HTTP or JSON library was added for the mail catcher: `java.net.http.HttpClient`
+is in the JDK and Jackson was already here.
+
+## Assertions: AssertJ, with one exception
+
+AssertJ is the only assertion vocabulary for **values** — API responses, database
+rows, email bodies, configuration. One failure format, one set of diagnostics.
+
+Playwright's `assertThat(Locator)` is used for **page state**, and that is not
+drift. AssertJ on `locator.textContent()` is a snapshot of a page that may still
+be rendering, and the only way to make it reliable is a sleep — which the brief
+forbids, and which would encode a guess about the application's timing.
+Playwright's assertions retry until the condition holds, so the condition is what
+gets written down. The split is by what is being asserted, not by who is
+asserting, and it is visible in the imports of every UI test.
 
 Deliberately absent, with the reason recorded so nobody adds them helpfully:
 
@@ -44,9 +61,12 @@ Deliberately absent, with the reason recorded so nobody adds them helpfully:
 - **A DI container** — JUnit extensions own all lifecycle. A second lifecycle
   owner is a seam, and the one thing that needs sharing across a run (the API
   client) lives in the launcher-session store, which is what that store is for.
-- **`org.aspectj:aspectjweaver`** — arrives with the first Allure `@Step`, which
-  is around-advice and needs a `-javaagent`. `@Epic`/`@Feature`/`@Story`/
-  `@Severity` do not.
+- **`org.aspectj:aspectjweaver`** — needed only for Allure `@Step`, which is
+  around-advice and requires a `-javaagent`. `@Epic`/`@Feature`/`@Story`/
+  `@Severity` do not, and the report is legible without step decomposition.
+- **The Allure Gradle plugin** — it adds dependencies and a javaagent to the
+  build. `./run report` calls `npx allure@3`, which is a report generator and
+  nothing else, pinned on the invocation.
 - **Any third-party Gradle plugin** — including the Allure plugin, which adds
   dependencies and a javaagent that are a few lines when actually needed.
 

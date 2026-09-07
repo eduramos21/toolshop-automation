@@ -64,7 +64,7 @@ class ProductCatalogueApiTest {
     @Story("A product can be retrieved by id")
     void aProductCanBeRetrievedById() {
         // Given the id of a product that is in stock
-        String productId = api.someProductInStock();
+        String productId = api.anyProductInStock().id();
 
         // When it is requested directly
         Response response = api.anonymous().get("/products/" + productId);

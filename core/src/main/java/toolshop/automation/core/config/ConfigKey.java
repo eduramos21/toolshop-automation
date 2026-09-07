@@ -2,6 +2,7 @@ package toolshop.automation.core.config;
 
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 
 /**
@@ -35,19 +36,38 @@ public enum ConfigKey {
     // README, so nothing is protected by treating them this way. They are
     // treated this way regardless, because a rule that is relaxed for the values
     // that do not matter is not in place for the ones that do.
-    ADMIN_PASSWORD("toolshop.admin.password", true),
-    CUSTOMER_PASSWORD("toolshop.customer.password", true);
+    ADMIN_PASSWORD("toolshop.admin.password", Flag.SECRET),
+    CUSTOMER_PASSWORD("toolshop.customer.password", Flag.SECRET),
 
-    private final String key;
-    private final boolean secret;
+    // Optional, because they describe things only some targets have. The
+    // database and the mail catcher are containers on the same machine as a
+    // local or CI run; against the hosted instance there is no database to
+    // connect to and no mail server to read.
+    //
+    // Optional does NOT mean a test may quietly skip. A test that needs one of
+    // these and cannot have it fails, naming the keys and the tag expression
+    // that excludes it - see ToolshopDatabase and MailCatcher in the data
+    // module. A silently skipped test is the same green-with-no-signal outcome
+    // the tag guard exists to prevent.
+    DB_URL("toolshop.db.url", Flag.OPTIONAL),
+    DB_USERNAME("toolshop.db.username", Flag.OPTIONAL),
+    DB_PASSWORD("toolshop.db.password", Flag.SECRET, Flag.OPTIONAL),
+    MAIL_BASE_URL("toolshop.mail.base-url", Flag.OPTIONAL);
 
-    ConfigKey(String key) {
-        this(key, false);
+    /** Nested so that a call site above reads as what it means. */
+    enum Flag {
+        /** No default anywhere, and never in a committed file. */
+        SECRET,
+        /** May be absent, because not every target has the thing it describes. */
+        OPTIONAL
     }
 
-    ConfigKey(String key, boolean secret) {
+    private final String key;
+    private final Set<Flag> flags;
+
+    ConfigKey(String key, Flag... flags) {
         this.key = key;
-        this.secret = secret;
+        this.flags = flags.length == 0 ? Set.of() : Set.of(flags);
     }
 
     /** The dotted key, which is also the {@code -D} name. */
@@ -56,7 +76,11 @@ public enum ConfigKey {
     }
 
     public boolean secret() {
-        return secret;
+        return flags.contains(Flag.SECRET);
+    }
+
+    public boolean optional() {
+        return flags.contains(Flag.OPTIONAL);
     }
 
     /** {@code toolshop.api.base-url} to {@code TOOLSHOP_API_BASE_URL}. */

@@ -10,9 +10,11 @@ Java 21 · Gradle 9.7.1 · JUnit 6 · Playwright · REST Assured · Allure
 
 ```sh
 git clone https://github.com/testsmith-io/practice-software-testing   # next to this repo
-cp .env.local.example .env.local                                     # then fill in two passwords
-./run up            # start the SUT, wait for it, seed it
+cp .env.local.example .env.local                                     # then fill in the passwords
+./gradlew :ui-tests:installBrowsers                                  # once, pinned to Playwright
+./run up            # start the SUT, wait for it, reset its data
 ./run test          # run the suite
+./run report        # render the Allure report and open it
 ```
 
 `./run status` shows what is up.
@@ -20,7 +22,8 @@ cp .env.local.example .env.local                                     # then fill
 The SUT is expected at `../practice-software-testing`. Point `TOOLSHOP_SUT_DIR`
 elsewhere if yours lives somewhere else.
 
-The two passwords are the seeded accounts, published in the SUT's own README.
+The passwords are the seeded accounts (published in the SUT's own README) and the
+local database.
 They are supplied from the environment rather than committed, because a rule
 relaxed for values that do not matter is not in place for the ones that do. Skip
 the step and the next Gradle invocation fails immediately, naming both keys and
@@ -50,7 +53,13 @@ a selection that runs nothing must never report green, and unlike a red build it
 gives no signal that anything is wrong.
 
 Retries are off. A flaky test is `@Quarantine` plus a linked issue, never a
-retry. Full vocabulary and reasoning: [`docs/TAGS.md`](docs/TAGS.md).
+retry — and so is a known defect in the application under test, of which there is
+currently one: see `CheckoutDefectUiTest`. The blocking run is
+`-Ptags='!quarantine'`. Full vocabulary and reasoning:
+[`docs/TAGS.md`](docs/TAGS.md).
+
+`@Db` marks the tests that need a reachable database or mailbox. Exclude them for
+a target that has neither: `./run test -Ptags='!db'`.
 
 ## Targets
 
@@ -81,6 +90,29 @@ overrides nothing, such as a mistyped `-D`.
 Full key list, every validation rule and the reasoning:
 [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md).
 
+## What the checkout slice covers
+
+One purchase, followed through every layer, because each can disagree with the
+others:
+
+```
+API      an account and a product, created through the application
+UI       storefront -> cart -> sign in -> address -> payment
+DB       the invoices row, its line, and the total
+mail     the confirmation the customer actually received
+```
+
+That last pair is not decoration. On this application a single press of "finish"
+shows a payment success message and creates **no order** — a suite that asserted
+on the message would report it as passing. See
+[`docs/adr/0005`](docs/adr/0005-failure-evidence-is-attached-by-one-extension.md).
+
+## Failure evidence
+
+Every UI failure attaches a screenshot, the Playwright trace, the page URL, the
+failed requests and the browser console — automatically, with nothing for a test
+to remember. The trace opens inside the Allure report.
+
 ## Layout
 
 ```
@@ -90,6 +122,7 @@ ui-tests/     Playwright page objects
 data/         database and mail verification
 scripts/      readiness check
 docs/         architecture, configuration, tags, threading, decision records
+build-logic/  the one convention plugin
 .run/         shared IntelliJ run configurations
 run           the entry point CI also calls
 ```

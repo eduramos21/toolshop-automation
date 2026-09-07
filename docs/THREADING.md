@@ -10,7 +10,7 @@ same model.
 | `ui-tests` | concurrent | **same thread** | `fixed`, parallelism 4 |
 | `api-tests` | concurrent | concurrent | `dynamic`, factor 3 |
 | `core` | — | — | sequential |
-| `data` | — | — | sequential for now, see below |
+| `data` | — | — | sequential; its only tests are pure unit tests |
 
 Configured in each module's `src/test/resources/junit-platform.properties`.
 `core` has no file: 73 fast in-process unit tests are not worth the scheduling.
@@ -54,10 +54,23 @@ intermittently — which is the better outcome.
 
 ## `data`
 
-Left sequential until the data layer exists. Database assertions read rows a UI
-or API action wrote, so the concurrency question there is about isolation between
-tests rather than about threads, and it is answered by the per-run unique naming
-rather than by a parallelism setting.
+Sequential, because the only tests in it are unit tests of the mail parsing. The
+database and mail helpers are exercised from `ui-tests`, where the concurrency
+question is about isolation between tests rather than threads — and that is
+answered by every test buying as an account unique to it, not by a parallelism
+setting.
+
+A connection per query and no pool, deliberately: these are a handful of
+verification queries at the end of a test, a shared `Connection` is not thread
+safe, and a pool would be machinery in service of nothing measurable.
+
+## What parallelism cost, measured
+
+Two UI classes, class-level parallelism, identical start timestamps — so it
+engages. `CheckoutUiTest` runs six full browser checkouts on one thread in about
+100 seconds while `StorefrontUiTest` finishes four tests in four seconds on
+another. The limit is that a class is the unit: a class with six slow tests
+cannot be split, and splitting it is the only way to shorten that path.
 
 ## Overriding for CI
 

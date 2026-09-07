@@ -51,10 +51,8 @@ class CheckoutApiTest {
     @Severity(SeverityLevel.BLOCKER)
     void aCustomerCanCheckOutACartAndReceiveAnInvoice() {
         // Given an authenticated customer with a cart holding two of one product
-        String productId = api.someProductInStock();
-        double unitPrice = api.anonymous().get("/products/" + productId)
-                .jsonPath().getDouble("price");
-        String cartId = api.cartContaining(productId, 2);
+        ToolshopApi.Product product = api.anyProductInStock();
+        String cartId = api.cartContaining(product.id(), 2);
 
         // When they check out by credit card
         Response response = api.as(config.customer())
@@ -67,8 +65,8 @@ class CheckoutApiTest {
                 .as("invoice numbers are sequential and prefixed")
                 .startsWith("INV-");
         assertThat(response.jsonPath().getDouble("total"))
-                .as("two of a product priced %s", unitPrice)
-                .isEqualTo(unitPrice * 2, org.assertj.core.data.Offset.offset(0.01));
+                .as("two of %s at %s", product.name(), product.price())
+                .isEqualTo(product.price() * 2, org.assertj.core.data.Offset.offset(0.01));
         assertThat(response.jsonPath().getString("billing_country")).isEqualTo("NL");
     }
 
@@ -79,7 +77,7 @@ class CheckoutApiTest {
     @Severity(SeverityLevel.CRITICAL)
     void everyAdvertisedPaymentMethodProducesAnInvoice(PaymentMethod method) {
         // Given a cart per case, since an invoice consumes one
-        String cartId = api.cartContaining(api.someProductInStock(), 1);
+        String cartId = api.cartContaining(api.anyProductInStock().id(), 1);
 
         // When the cart is checked out with this method
         Response response = api.as(config.customer())
@@ -96,7 +94,7 @@ class CheckoutApiTest {
     @Severity(SeverityLevel.CRITICAL)
     void checkingOutRequiresAuthentication() {
         // Given a valid cart and a valid invoice, but no credentials
-        String cartId = api.cartContaining(api.someProductInStock(), 1);
+        String cartId = api.cartContaining(api.anyProductInStock().id(), 1);
 
         // When it is submitted anonymously
         Response response = api.anonymous()
@@ -116,7 +114,7 @@ class CheckoutApiTest {
     @Story("A billing city that does not belong to the country is rejected")
     void aBillingCityThatDoesNotBelongToTheCountryIsRejected() {
         // Given an otherwise valid invoice whose city has been replaced
-        String cartId = api.cartContaining(api.someProductInStock(), 1);
+        String cartId = api.cartContaining(api.anyProductInStock().id(), 1);
         InvoiceRequest tampered = new InvoiceRequest("Test Street 1", "Nowhereville", "Nowhere",
                 "NL", "1011AB", PaymentMethod.CASH_ON_DELIVERY, cartId, Map.of());
 
@@ -135,7 +133,7 @@ class CheckoutApiTest {
         // Given a valid invoice with a payment method the API does not offer.
         // The enum makes this unreachable from ordinary test code, which is the
         // point of the enum - so this one sends a raw map on purpose.
-        String cartId = api.cartContaining(api.someProductInStock(), 1);
+        String cartId = api.cartContaining(api.anyProductInStock().id(), 1);
         PostcodeLookup address = api.addressFor("NL", "1011AB");
         Map<String, Object> body = Map.of(
                 "billing_street", "Test Street 1",
@@ -164,7 +162,7 @@ class CheckoutApiTest {
     @Regression
     @Story("A gift card number of the wrong format is rejected")
     void aGiftCardNumberOfTheWrongFormatIsRejected() {
-        String cartId = api.cartContaining(api.someProductInStock(), 1);
+        String cartId = api.cartContaining(api.anyProductInStock().id(), 1);
         InvoiceRequest request = validInvoiceFor(cartId, PaymentMethod.GIFT_CARD)
                 .payingWith(PaymentMethod.GIFT_CARD,
                         Map.of("gift_card_number", "too-short", "validation_code", "1234"));
