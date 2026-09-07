@@ -59,7 +59,7 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       # Playwright's Java version and its browser build are coupled, so the
       # browser comes from the same pinned artifact rather than from a separate
@@ -140,7 +140,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - run: ./gradlew :ui-tests:installBrowsers
       - run: ./run up
       - name: Run the quarantined tests
