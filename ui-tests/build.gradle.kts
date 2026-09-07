@@ -4,9 +4,6 @@ plugins {
 
 dependencies {
     testImplementation(project(":core"))
-}
-
-dependencies {
     testImplementation(libs.playwright)
 }
 

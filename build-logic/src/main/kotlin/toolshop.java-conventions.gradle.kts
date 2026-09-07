@@ -38,7 +38,28 @@ dependencies {
 // Tag vocabulary and the empty-selection guard arrive in P3.
 val tagExpression = providers.gradleProperty("tags")
 
+// The build's ONLY interaction with configuration: forwarding system properties
+// that already exist on its own invocation, unchanged, into the test JVM.
+//
+// It never reads a configuration file and never calls System.setProperty. That
+// is the point - a build that sets properties does so after the command line has
+// been parsed, so a file silently outranks a -D typed by hand, and a long-lived
+// daemon carries the stale value into the next build. All precedence lives in
+// one Java class instead. See docs/adr/0002-gradle-never-owns-configuration.md.
+//
+// Forwarding only, never supplying, is also what makes an IDE gutter run work
+// with no run configuration: nothing here is required for a default run.
+val forwardedConfig = providers.systemPropertiesPrefixedBy("toolshop.")
+
+// The same mechanism covers JUnit Platform properties, so a CI-specific
+// parallelism setting is -Djunit.jupiter.execution.parallel.config... on the
+// invocation rather than a branch on an is-this-CI check in test code.
+val forwardedJunit = providers.systemPropertiesPrefixedBy("junit.")
+
 tasks.withType<Test>().configureEach {
+    systemProperties(forwardedConfig.get())
+    systemProperties(forwardedJunit.get())
+
     useJUnitPlatform {
         if (tagExpression.isPresent) {
             val expression = tagExpression.get()

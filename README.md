@@ -10,6 +10,7 @@ Java 21 · Gradle 9.7.1 · JUnit 6 · Playwright · REST Assured · Allure
 
 ```sh
 git clone https://github.com/testsmith-io/practice-software-testing   # next to this repo
+cp .env.local.example .env.local                                     # then fill in two passwords
 ./run up            # start the SUT, wait for it, seed it
 ./run test          # run the suite
 ```
@@ -18,6 +19,13 @@ git clone https://github.com/testsmith-io/practice-software-testing   # next to 
 
 The SUT is expected at `../practice-software-testing`. Point `TOOLSHOP_SUT_DIR`
 elsewhere if yours lives somewhere else.
+
+The two passwords are the seeded accounts, published in the SUT's own README.
+They are supplied from the environment rather than committed, because a rule
+relaxed for values that do not matter is not in place for the ones that do. Skip
+the step and the next Gradle invocation fails immediately, naming both keys and
+the three ways to supply each — before any test runs, so nothing looks like a
+product bug. See [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md).
 
 ## Running a subset
 
@@ -53,7 +61,11 @@ The same bytecode runs against three targets. Only configuration changes.
 Precedence, highest first: `-D` system properties, environment variables,
 `.env.local` (gitignored, local only), `application-<profile>.properties`,
 `application.properties`. A missing required value aborts the run before any
-test executes, naming the key and every way to supply it.
+test executes, naming the key and every way to supply it — as does a key that
+overrides nothing, such as a mistyped `-D`.
+
+Full key list, every validation rule and the reasoning:
+[`docs/CONFIGURATION.md`](docs/CONFIGURATION.md).
 
 ## Layout
 
@@ -63,11 +75,12 @@ api-tests/    REST Assured
 ui-tests/     Playwright page objects
 data/         database and mail verification
 scripts/      readiness check
-docs/adr/     decision records
+docs/         configuration reference, decision records
 run           the entry point CI also calls
 ```
 
 ## Docs
 
+- [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) — layers, keys, profiles, and what is rejected
 - [`docs/SELF-ASSESSMENT.md`](docs/SELF-ASSESSMENT.md) — what worked, what didn't, measured
 - [`docs/adr/`](docs/adr/) — decisions, each naming the alternative rejected and why

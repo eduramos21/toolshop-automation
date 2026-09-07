@@ -21,12 +21,51 @@ contradicts the plan.
 ### P0 — scaffold
 _(to write)_
 
+### P1 — version catalog, convention plugin, module skeleton
+_(to write)_
+
+### P2 — config layer and fail-fast
+
+The layering itself was the easy part. Five ordered lookups is not hard code to
+write; what took the thinking was deciding where each rule had to live so that
+breaking it later would be difficult rather than merely discouraged.
+
+Three things came out differently from how they went in.
+
+**The uppercase-key rule is load-bearing, not style.** It started as a naming
+convention. It is actually the reason the whole design has no name-translation
+layer: lookups go from a dotted key to an environment variable name and never
+the reverse, so `toolshop.api.baseUrl` — which maps to `TOOLSHOP_API_BASEURL`
+and cannot be mapped back — is rejected rather than guessed at. Every
+translation step between key shapes is a place where "the override silently
+didn't apply" can hide, and there are now none.
+
+**Rejecting an unrecognised key mattered more than rejecting a missing one.**
+A missing value is loud by construction. A `-D` that overrides nothing is
+silent, and has exactly the same effect as not typing it. `-Dtoolshop.api.timeuot=PT5S`
+is now an error. This was not in the plan; it fell out of having enumerated the
+keys for the environment-variable mapping, which is the sort of thing that only
+shows up once the code exists.
+
+**The `ci` profile duplicates `local` and was kept anyway.** The tempting move
+is to alias it. But CI is precisely where the values are most likely to need to
+diverge, and the point of the layering is that when they do it is a config
+change and not a branch in code. A file that exists is a place to put that
+change; an alias is a thing to undo first.
+
+The cost, stated plainly: every Gradle invocation that runs tests now needs a
+complete configuration, including secrets, and that includes the unit tests of
+the loader itself, which have no use for a password. `./gradlew build` on a
+fresh clone fails until `.env.local` exists. Each way out was worse than the
+cost — see [`adr/0004`](adr/0004-configuration-is-validated-before-test-discovery.md).
+
 ## Measurements
 
 | Claim | How it was measured | Result |
 |---|---|---|
 | Gradle's `failOnNoDiscoveredTests` guards empty tag selections | one-test module, zero-match tag filter, Gradle 9.7.1 | **False.** Tag filtering is post-discovery. See `docs/adr/0003`. |
 | The `junit-bom` is required to stop Playwright's compile-scope `junit-jupiter-engine:5.14.1` pin winning | resolved `playwright:1.62.0 + junit-jupiter:6.1.3` in two configurations, with and without the BOM | **False on Gradle.** Identical resolution either way — Gradle is highest-wins and `junit-jupiter:6.1.3` already brings engine 6.1.3. True on Maven, which is nearest-wins. The BOM stays for versionless catalog entries and platform/jupiter consistency, which is a smaller claim than the one first written down. |
+| An exception thrown from `LauncherSessionListener.launcherSessionOpened` is swallowed and logged, the way `TestExecutionListener` callbacks are | `ServiceLoader`-registered listener throwing a canary, Gradle 9.7.1, JUnit 6.1.3, single-line and multi-line messages | **False — it propagates.** `BUILD FAILED`, exit 1, zero tests executed, no results XML written, message rendered in full including line breaks. `DefaultLauncherSession` calls session listeners from its constructor, unguarded. The planned fallback — the same validation inside `ToolshopConfig.get()`, failing on the first test instead — was not needed. See `docs/adr/0004`. |
 
 ## What I would do differently
 _(to write)_
