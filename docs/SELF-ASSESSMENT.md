@@ -59,6 +59,51 @@ the loader itself, which have no use for a password. `./gradlew build` on a
 fresh clone fails until `.env.local` exists. Each way out was worse than the
 cost — see [`adr/0004`](adr/0004-configuration-is-validated-before-test-discovery.md).
 
+### P3 — tag vocabulary and tag-driven execution
+
+The annotations were the cheap half. Twelve files, each four lines of
+boilerplate around one `@Tag`, and they buy the thing that matters: a typo is a
+compile error rather than a test that quietly belongs to no suite.
+
+What took the work was the guard, and the interesting part is *where* it had to
+go. The instinct is to put it in the conventions plugin with everything else,
+failing each module that selected nothing. That is wrong, and the reason is
+structural: there is one layer tag per module, so `-Ptags=api` is *supposed* to
+select zero tests in `ui-tests`. Only zero across the whole invocation is a
+mistake. A per-module guard would have produced a false failure on the most
+ordinary command in the vocabulary, and would have been switched off within a
+week.
+
+So the guard is one task in the root build, finalising every `Test` task. That
+placement is not a compromise; it is the only place that can see the thing being
+checked.
+
+**Two things I checked rather than assumed.** Whether Gradle leaves stale result
+XML behind when a task re-executes with a changed filter — it does not, it wipes
+the output directory, which is what makes counting XML safe. And whether a
+cross-project `finalizedBy` survives the configuration cache — it does.
+
+**One thing I got to have for free.** The guard's failure message lists the tag
+vocabulary, and it gets the list by reading the annotation file names in `core`
+rather than holding a copy. That only stays true while a file name and the tag it
+declares agree, so `TagVocabularyTest` asserts it. The same test covers the two
+ways a composed annotation can be silently inert — a `@Tag` value that does not
+match the annotation's name, and a missing `RUNTIME` retention. Both compile,
+both apply, and both produce exactly the excluded-and-invisible test the
+vocabulary exists to prevent, one level down.
+
+**What I left open, deliberately.** `-Ptags=quarantine` finding nothing is good
+news, and the guard fails it, because it cannot tell an empty quarantine list
+from a typo. The obvious fix is a flag that suppresses the guard — which is a
+flag that ends up in a CI file silencing a real problem. It waits for P8, where
+the scheduled job that needs it actually exists.
+
+Also honest: the parallelism configuration for `ui-tests` and `api-tests` landed
+here with the threading decisions it documents, but neither module has a test
+yet, so neither file has been exercised. The model in
+[`THREADING.md`](THREADING.md) is reasoned from `@UsePlaywright`'s per-thread
+caching, not yet from a measurement. That measurement is P5's.
+
 ## Measurements
 
 | Claim | How it was measured | Result |

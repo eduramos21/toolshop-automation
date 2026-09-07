@@ -72,9 +72,18 @@ tasks.withType<Test>().configureEach {
 
     // Both of these are ON but neither catches a tag expression that matches
     // nothing - measured, see docs/adr/0003. They are kept because they do
-    // catch a mistyped --tests pattern. The real guard lands in P3.
+    // catch a mistyped --tests pattern.
     failOnNoDiscoveredTests = true
     filter { isFailOnNoMatchingTests = true }
+
+    // The guard that does catch it. Wired only when -Ptags is present, so an
+    // ordinary run has one fewer task in the graph and a configuration failure
+    // reports one error rather than two. It lives in the root project because a
+    // layer tag legitimately selects zero tests in the other modules - only
+    // zero across the whole invocation is a mistake.
+    if (tagExpression.isPresent) {
+        finalizedBy(":verifyTestSelection")
+    }
 
     // All concurrency is configured in each module's junit-platform.properties.
     // Forking multiplies browser processes and discards Playwright's per-thread

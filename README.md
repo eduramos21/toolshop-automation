@@ -41,8 +41,16 @@ a [JUnit tag expression](https://docs.junit.org/current/user-guide/#running-test
 
 **Quote any compound expression.** `&` and `|` are shell operators.
 
+Twelve tags, applied as annotations rather than strings, so `@Smoek` does not
+compile: `@Ui` `@Api` `@Db` `@Contract` · `@Smoke` `@Regression` ·
+`@Storefront` `@Checkout` `@Admin` `@Auth` · `@Slow` `@Quarantine`.
+
 A tag expression that matches nothing **fails the build**. That is deliberate —
-a selection that runs nothing must never report green.
+a selection that runs nothing must never report green, and unlike a red build it
+gives no signal that anything is wrong.
+
+Retries are off. A flaky test is `@Quarantine` plus a linked issue, never a
+retry. Full vocabulary and reasoning: [`docs/TAGS.md`](docs/TAGS.md).
 
 ## Targets
 
@@ -75,12 +83,15 @@ api-tests/    REST Assured
 ui-tests/     Playwright page objects
 data/         database and mail verification
 scripts/      readiness check
-docs/         configuration reference, decision records
+docs/         configuration, tags, threading, decision records
+.run/         shared IntelliJ run configurations
 run           the entry point CI also calls
 ```
 
 ## Docs
 
 - [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) — layers, keys, profiles, and what is rejected
+- [`docs/TAGS.md`](docs/TAGS.md) — the tag vocabulary, selection, and the empty-selection guard
+- [`docs/THREADING.md`](docs/THREADING.md) — the parallelism model, per module, and why
 - [`docs/SELF-ASSESSMENT.md`](docs/SELF-ASSESSMENT.md) — what worked, what didn't, measured
 - [`docs/adr/`](docs/adr/) — decisions, each naming the alternative rejected and why
