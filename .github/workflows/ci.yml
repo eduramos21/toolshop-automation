@@ -61,6 +61,36 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # Fail in seconds rather than after a two-minute container start. The
+      # configuration layer already reports a missing credential clearly, but it
+      # only gets the chance once the application is up.
+      - name: Check the credentials are configured
+        run: |
+          missing=
+          for name in TOOLSHOP_ADMIN_PASSWORD TOOLSHOP_CUSTOMER_PASSWORD TOOLSHOP_DB_PASSWORD; do
+            eval "value=\$$name"
+            [ -n "$value" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing Actions variables:$missing"
+            echo "Set them under Settings -> Secrets and variables -> Actions -> Variables."
+            echo "They are the seeded fixture passwords, published in the application's README."
+            exit 1
+          fi
+
+      # The application's own images are split across architectures: the API and
+      # UI are published linux/amd64 only, the web proxy and cron are linux/arm64
+      # only. There is no single architecture on which all four run natively, so
+      # a runner needs an emulator for whichever half does not match it.
+      #
+      # Without this, `web` and `cron` fail with "exec format error" and the API
+      # never answers, because nothing is listening on the port. Measured on this
+      # runner; it cannot be reproduced on an arm64 laptop, where the mismatch
+      # falls the other way and Docker Desktop emulates silently. See
+      # docs/adr/0006.
+      - name: Register the cross-architecture emulator
+        uses: docker/setup-qemu-action@v3
+
       # Playwright's Java version and its browser build are coupled, so the
       # browser comes from the same pinned artifact rather than from a separate
       # action with its own version.
@@ -93,6 +123,9 @@ jobs:
 
       - name: Build the report
         if: always()
+        # Diagnostics. If the suite never ran there is nothing to report, and
+        # that is not a second failure worth marking the job with.
+        continue-on-error: true
         run: ./run report
 
       - name: Upload the report
@@ -141,6 +174,36 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
+
+      # Fail in seconds rather than after a two-minute container start. The
+      # configuration layer already reports a missing credential clearly, but it
+      # only gets the chance once the application is up.
+      - name: Check the credentials are configured
+        run: |
+          missing=
+          for name in TOOLSHOP_ADMIN_PASSWORD TOOLSHOP_CUSTOMER_PASSWORD TOOLSHOP_DB_PASSWORD; do
+            eval "value=\$$name"
+            [ -n "$value" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing Actions variables:$missing"
+            echo "Set them under Settings -> Secrets and variables -> Actions -> Variables."
+            echo "They are the seeded fixture passwords, published in the application's README."
+            exit 1
+          fi
+
+      # The application's own images are split across architectures: the API and
+      # UI are published linux/amd64 only, the web proxy and cron are linux/arm64
+      # only. There is no single architecture on which all four run natively, so
+      # a runner needs an emulator for whichever half does not match it.
+      #
+      # Without this, `web` and `cron` fail with "exec format error" and the API
+      # never answers, because nothing is listening on the port. Measured on this
+      # runner; it cannot be reproduced on an arm64 laptop, where the mismatch
+      # falls the other way and Docker Desktop emulates silently. See
+      # docs/adr/0006.
+      - name: Register the cross-architecture emulator
+        uses: docker/setup-qemu-action@v3
       - run: ./gradlew :ui-tests:installBrowsers
       - run: ./run up
       - name: Run the quarantined tests

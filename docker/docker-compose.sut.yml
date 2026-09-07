@@ -10,6 +10,15 @@
 #   1. Every image is pinned by DIGEST, not by tag. `sprint5-api:2.4` is a
 #      mutable tag and `web` publishes only `latest`, so a tag alone does not
 #      describe a version. A digest does.
+#
+#      Note what a digest does NOT do here. None of these images is a multi-arch
+#      manifest list, and the publisher's architectures are inconsistent: the API
+#      and UI are linux/amd64, the web proxy and cron are linux/arm64. There is
+#      no architecture on which all four run natively. A machine therefore needs
+#      an emulator for whichever half does not match it - Docker Desktop does
+#      that silently on an arm64 laptop, and CI registers one explicitly. Each
+#      image below records its architecture so this is visible rather than
+#      surprising.
 #   2. MariaDB has a healthcheck and the services that need it wait for it.
 #      The application's compose files have none, so the API can start against a
 #      database that is not accepting connections yet and crash-loop.
@@ -25,6 +34,7 @@
 name: toolshop-sut
 
 services:
+  # linux/amd64
   laravel-api:
     image: testsmith/practice-software-testing-sprint5-api@sha256:72f077ed05e203e9a97c4864d1db52030b7d39dbd1c6fe21240754c00bba0fe3
     environment:
@@ -43,6 +53,7 @@ services:
       mariadb:
         condition: service_healthy
 
+  # linux/amd64
   angular-ui:
     image: testsmith/practice-software-testing-sprint5-ui@sha256:7b6eb43fd2bd9fd0e5f6fb64e46155162bcf0f9db95b7f660343ca844ee79f36
     ports:
@@ -50,6 +61,7 @@ services:
     command: bash -c "ng serve --host 0.0.0.0 --port 4200"
 
   # The reverse proxy. 8091 is the API, 8000 is the database admin UI.
+  # linux/arm64 - needs emulation on an amd64 host.
   web:
     image: testsmith/practice-software-testing-web@sha256:950bafdc86501002c381e35d9b70e298fe211f4ab1fbfda334b67f03dffa048d
     ports:
@@ -60,6 +72,7 @@ services:
 
   # Runs the application's scheduled work. Shares the API's code volume, so it
   # has to start after the API has populated it.
+  # linux/arm64 - needs emulation on an amd64 host.
   cron:
     image: testsmith/practice-software-testing-cron@sha256:2e0d51bd3f92c1eb2d2b21439982c8c8785bcbfa0c0fb27698f83e785337110f
     restart: always

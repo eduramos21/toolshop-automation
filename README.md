@@ -20,6 +20,13 @@ No clone of the application is needed. `docker/docker-compose.sut.yml` pins ever
 image by digest, so a laptop and a CI runner bring up the same thing — set
 `TOOLSHOP_SUT_DIR` only if you want to run against a clone you are editing.
 
+One wrinkle worth knowing: the application's images are split across
+architectures — the API and UI are `linux/amd64`, the web proxy and cron are
+`linux/arm64` — so whichever half does not match your machine runs emulated.
+Docker Desktop arranges that itself; on plain Linux you may need
+`docker run --privileged --rm tonistiigi/binfmt --install all` once. If `web`
+logs `exec format error`, that is this.
+
 `./run status` shows what is up.
 
 The passwords are the seeded accounts (published in the SUT's own README) and the

@@ -21,15 +21,33 @@ updates:
       # it should be a deliberate change rather than an automatic one.
       - dependency-name: "com.microsoft.playwright:playwright"
         update-types: ["version-update:semver-major"]
+      # 3.0.0 exists in Maven Central's metadata and publishes no jar - the
+      # artifact 404s. Dependabot offered it on its first run and would offer it
+      # every week; the pin is 2.46.1 for that reason and not by accident.
+      - dependency-name: "com.atlassian.oai:swagger-request-validator-restassured"
+        versions: ["3.0.0"]
 
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
+    # One pull request, not one per action. Every pull request runs the whole
+    # suite - containers, a browser install and 152 tests - so six of them for
+    # six version bumps is most of an hour of runner time to learn one thing.
+    groups:
+      actions:
+        patterns: ["*"]
 
   # The application under test is pinned by digest, so this is what turns "we
   # test against a fixed version" into "we notice when a newer one exists".
-  - package-ecosystem: docker
+  #
+  # `docker-compose`, not `docker`. The `docker` ecosystem looks for Dockerfiles
+  # and Kubernetes manifests and fails outright on a directory that has neither -
+  # measured: "No Dockerfiles nor Kubernetes YAML found in /docker".
+  - package-ecosystem: docker-compose
     directory: "/docker"
     schedule:
       interval: weekly
+    groups:
+      sut-images:
+        patterns: ["*"]
