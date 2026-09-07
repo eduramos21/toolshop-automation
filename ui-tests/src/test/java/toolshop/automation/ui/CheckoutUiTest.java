@@ -71,7 +71,7 @@ class CheckoutUiTest {
     private static final String COUNTRY = "NL";
     private static final String POSTCODE = "1011AB";
     private static final String HOUSE_NUMBER = "1";
-    private static final Duration MAIL_BUDGET = Duration.ofSeconds(60);
+    private static final Duration MAIL_BUDGET = Duration.ofSeconds(15);
 
     private final ToolshopApi api;
     private final ToolshopConfig config;

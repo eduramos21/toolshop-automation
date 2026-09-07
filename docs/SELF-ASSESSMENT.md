@@ -407,6 +407,29 @@ re-measured when a page changes.
 Six pages scanned, three violations across two of them, and the two worst are on
 the authentication forms.
 
+### Postscript: the timeout that was hiding a design problem
+
+The mail assertion needed its budget raised from 20 seconds to 60 during P7. I
+raised it, noted that the confirmation was a queued job, and moved on. That was
+the mistake — not the number, the incuriosity. A timeout that has to be raised is
+evidence about the system, and I treated it as a parameter.
+
+CI is where it came due: 60 seconds was not enough on a runner, and the failure
+looked like flakiness. It was not. The application ships
+`queue.default=database`, nothing in either container drains the queue, and one
+suite run leaves fifteen rows in the `jobs` table. Mail arrived when something
+happened to process it. Every green run on my laptop had been luck of a
+consistent kind.
+
+The fix is one line of SUT configuration — `QUEUE_CONNECTION=sync` — and the
+budget then drops to 15 seconds because the send is inline. What I should have
+done in P7 is what the failure eventually forced: look at why, rather than at
+how long.
+
+Worth saying plainly because the repository argues against exactly this. A
+retry, a longer sleep and a raised timeout are the same move, and I made the
+respectable-looking version of it.
+
 ### Postscript: the residue check that was not looking at everything
 
 P7 closed on "running the suite twice leaves no residue", verified against users
@@ -443,6 +466,7 @@ the cart." - which named the second bug in the same run.
 | An accessibility scan reports what is on the page | scanned the sign-in page with and without waiting for load | **Not without waiting.** Unwaited: zero violations. Waited: a consistent **critical** `button-name`. A scan that under-reports is worse than none, because it produces a green tick. |
 | Contract validation can be turned on quietly | enabled it as a filter on the shared client | **No.** 28 of 41 API tests failed, from 13 distinct deviations — all of them the document under-reporting the application. That is the finding, not an obstacle to it. |
 | "Any product in stock" is a safe way to pick test data | ran the suite until it broke, then read the catalogue | **False, twice over.** Taking the *first* in-stock product concentrated every purchase in a run on one product - about fifteen units against a seeded stock of twenty-five - so two runs exhausted it and the application let stock go to **-50** without complaint. And reading only page one meant that once those were gone, the one remaining in-stock product was the Thor Hammer, which `CartService` caps at one per cart by comparing the product **name**. Arbitrary test data has to be arbitrary within a stated constraint, not simply first. Now: pages the catalogue, excludes per-cart limits, picks at random. |
+| The checkout email is sent inline, because the queue driver defaults to `sync` | read `config('queue.default')` in the shipped image, counted rows in `jobs`, listed processes in both containers | **False, and it mattered.** The image ships `database`. `SendCheckoutEmail implements ShouldQueue`, nothing drains the queue - php-fpm only in the API container, an empty `/etc/periodic/15min` in cron - and one suite run leaves 15 pending jobs. Delivery was opportunistic: within a minute on a laptop, not within a minute on a CI runner. The pinned compose now sets `QUEUE_CONNECTION=sync`; 6 of 6 checkouts deliver, 0 jobs pending, and the poll budget dropped from 60s to 15s. |
 | Searching a product's own full name finds that product | `/products/search?q=<full name>` against the seeded catalogue | **False.** Zero rows. The search is `MATCH(name) AGAINST(? IN BOOLEAN MODE)`, which requires every word, and `with` is a MySQL stopword. The first two words of the same name return three products. The UI search test now takes its term and its expected ids from the application. |
 | A UI success message is evidence that the action succeeded | followed a checkout to the invoice table and the mailbox | **False, on this application.** One press of "finish" shows a payment success message and creates no order. See `docs/adr/0005` and `CheckoutDefectUiTest`. |
 | An exception thrown from `LauncherSessionListener.launcherSessionOpened` is swallowed and logged, the way `TestExecutionListener` callbacks are | `ServiceLoader`-registered listener throwing a canary, Gradle 9.7.1, JUnit 6.1.3, single-line and multi-line messages | **False — it propagates.** `BUILD FAILED`, exit 1, zero tests executed, no results XML written, message rendered in full including line breaks. `DefaultLauncherSession` calls session listeners from its constructor, unguarded. The planned fallback — the same validation inside `ToolshopConfig.get()`, failing on the first test instead — was not needed. See `docs/adr/0004`. |

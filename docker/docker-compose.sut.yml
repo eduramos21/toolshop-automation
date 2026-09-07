@@ -47,6 +47,25 @@ services:
       MAIL_MAILER: smtp
       MAIL_HOST: mailcatcher
       MAIL_PORT: "1025"
+      # Run queued work inline, which is what makes the confirmation email
+      # observable.
+      #
+      # Measured, and not what the application's default config suggests. The
+      # image ships `queue.default=database`, `SendCheckoutEmail implements
+      # ShouldQueue`, and nothing drains the queue: laravel-api runs php-fpm
+      # only, and the cron container's /etc/periodic/15min is empty. One suite
+      # run leaves 15 rows in the `jobs` table.
+      #
+      # So delivery was opportunistic. It arrived within about a minute on a
+      # laptop and did not arrive within a minute on a CI runner - a test that
+      # passes or fails on how busy the machine is, which is the definition of
+      # the flake this repository refuses to paper over with a longer timeout.
+      #
+      # `sync` sends the mail during the POST that raises the invoice. The
+      # assertion then means "the application sends the confirmation", which is
+      # what it was ever able to mean; timing of the real queue is not something
+      # this suite can speak to.
+      QUEUE_CONNECTION: sync
     volumes:
       - laravel-app-code:/var/www
     depends_on:

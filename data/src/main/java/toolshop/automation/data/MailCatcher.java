@@ -92,10 +92,18 @@ public final class MailCatcher {
      * confirmation arrives - and a poll that accepts it returns immediately with
      * the wrong message, which is worse than not polling at all.
      *
-     * <p>The confirmation is a queued job - {@code SendCheckoutEmail implements
-     * ShouldQueue} - which runs inline only because the queue driver happens to
-     * default to {@code sync}. Under any other driver it is genuinely
-     * asynchronous, and there is no push notification to wait on.
+     * <p>The confirmation is a queued job: {@code SendCheckoutEmail implements
+     * ShouldQueue}. The application's image ships {@code queue.default=database}
+     * and runs nothing that drains the queue - php-fpm only in the API
+     * container, an empty {@code /etc/periodic/15min} in cron - so one suite run
+     * against the shipped configuration leaves fifteen rows in the {@code jobs}
+     * table and mail arrives when it happens to arrive.
+     *
+     * <p>The pinned compose therefore sets {@code QUEUE_CONNECTION=sync}, which
+     * sends during the request that raises the invoice. This poll remains
+     * because there is still no push notification and the mailbox is read over
+     * HTTP - but it is now waiting on a send that has already happened, not on a
+     * worker that may never run.
      *
      * <p>So this polls, and the distinction from a fixed sleep matters. A fixed
      * sleep stands in for a condition and encodes a guess at how long something
