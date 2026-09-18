@@ -11,10 +11,6 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  schedule:
-    # Nightly, for the quarantined tests. They are excluded from every blocking
-    # run, so without this they would simply stop being looked at.
-    - cron: "0 3 * * *"
 
 permissions:
   contents: read
