@@ -6,7 +6,7 @@
 # it and no way for a stray coordinate to drift out of step.
 
 [versions]
-allure       = "2.35.5"
+allure       = "3.0.0"
 axe          = "4.13.0"
 assertj      = "3.27.7"
 jackson      = "2.22.2"
