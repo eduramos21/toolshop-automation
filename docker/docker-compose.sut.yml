@@ -36,7 +36,7 @@ name: toolshop-sut
 services:
   # linux/amd64
   laravel-api:
-    image: testsmith/practice-software-testing-sprint5-api@sha256:72f077ed05e203e9a97c4864d1db52030b7d39dbd1c6fe21240754c00bba0fe3
+    image: testsmith/practice-software-testing-sprint5-api@sha256:881cb7ecd76477994728648c0c16f6e9d2beed0f0217734843a32a7bb92553f0
     environment:
       PHP_OPCACHE_VALIDATE_TIMESTAMPS: "1"
       DB_HOST: mariadb
@@ -74,7 +74,7 @@ services:
 
   # linux/amd64
   angular-ui:
-    image: testsmith/practice-software-testing-sprint5-ui@sha256:7b6eb43fd2bd9fd0e5f6fb64e46155162bcf0f9db95b7f660343ca844ee79f36
+    image: testsmith/practice-software-testing-sprint5-ui@sha256:f907d8daae32dc90ba900e964928d00bf0aabfab7067eaeeaa49f5a0f70c52e6
     ports:
       - "4200:4200"
     command: bash -c "ng serve --host 0.0.0.0 --port 4200"
@@ -110,7 +110,7 @@ services:
         condition: service_started
 
   mariadb:
-    image: yobasystems/alpine-mariadb:10.6.11
+    image: yobasystems/alpine-mariadb:11.4.9-03
     ports:
       - "3306:3306"
     environment:
