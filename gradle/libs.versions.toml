@@ -9,7 +9,7 @@
 allure       = "2.35.5"
 axe          = "4.13.0"
 assertj      = "3.27.7"
-jackson      = "2.22.2"
+jackson      = "2.22.3"
 junit        = "6.1.3"
 mariadb      = "3.5.10"
 playwright   = "1.62.0"
